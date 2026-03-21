@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+:root {
+  --gold: #f5a623;
+  --gold-dark: #d4891a;
+  --dark: #0a0e17;
+  --dark-card: #111827;
+  --dark-lighter: #1a2236;
+  --green-accent: #10b981;
+  --blue-accent: #3b82f6;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  direction: rtl;
+  font-family: 'Heebo', sans-serif;
+  background: var(--dark);
+  color: #e5e7eb;
+}
+
+/* Animated gradient background */
+.hero-gradient {
+  background: linear-gradient(135deg, #0a0e17 0%, #111827 40%, #0f172a 70%, #0a0e17 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-gradient::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 30% 50%, rgba(245, 166, 35, 0.08) 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 50%, rgba(59, 130, 246, 0.06) 0%, transparent 50%);
+  animation: float 15s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(30px, -30px); }
+  66% { transform: translate(-20px, 20px); }
+}
+
+/* Glow effect */
+.glow-gold {
+  box-shadow: 0 0 20px rgba(245, 166, 35, 0.3), 0 0 60px rgba(245, 166, 35, 0.1);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* Card styles */
+.glass-card {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card:hover {
+  border-color: rgba(245, 166, 35, 0.3);
+}
+
+/* FAQ details/summary - hide native marker */
+details summary::-webkit-details-marker,
+details summary::marker {
+  display: none;
+  content: "";
+}
+
+/* Animated counter */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-count {
+  animation: countUp 0.6s ease-out forwards;
+}
+
+/* Pulse for CTA */
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(245, 166, 35, 0); }
+}
+
+.pulse-cta {
+  animation: pulse-gold 2s infinite;
+}
+
+/* Chat message fade in */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* Pricing card popular */
+.pricing-popular {
+  border: 2px solid var(--gold);
+  position: relative;
+}
+
+.pricing-popular::before {
+  content: 'הכי פופולרי';
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: var(--dark);
+  padding: 2px 16px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--dark);
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Mobile touch optimizations */
+@media (max-width: 768px) {
+  .hero-gradient::before {
+    animation: none;
+  }
+}

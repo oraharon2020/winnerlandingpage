@@ -1,0 +1,45 @@
+export default function Footer() {
+  return (
+    <footer className="bg-[#0a0e17] border-t border-white/5 py-10">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚽</span>
+            <span className="text-lg font-bold text-white">
+              Winner<span className="text-[#f5a623]">Bot</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <a
+              href="https://t.me/Mywinnerisraelbot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-[#f5a623] text-sm transition-colors"
+            >
+              🤖 הבוט
+            </a>
+            <a
+              href="https://t.me/WinnerBotTips"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-[#f5a623] text-sm transition-colors"
+            >
+              📢 הערוץ
+            </a>
+          </div>
+
+          <div className="text-gray-500 text-sm text-center">
+            הבוט מספק ניתוח סטטיסטי בלבד ואינו מהווה ייעוץ להימורים.
+            <br />
+            הימורים כרוכים בסיכון — 18+ שחק באחריות.
+          </div>
+
+          <div className="text-gray-500 text-sm">
+            © {new Date().getFullYear()} WinnerBot
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
