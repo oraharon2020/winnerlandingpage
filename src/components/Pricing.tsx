@@ -2,52 +2,20 @@ const BOT_LINK = "https://t.me/Mywinnerisraelbot";
 
 const plans = [
   {
-    name: "שבועי",
-    emoji: "⚡",
-    stars: 750,
-    period: "7 ימים",
-    features: [
-      "כל ההמלצות — ללא הגבלה",
-      "Push אוטומטי כל בוקר",
-      "ניתוח AI מפורט לכל משחק",
-      "גישה ל-30+ ליגות",
-    ],
-    cta: "התחל שבועי",
-    popular: false,
-    style: "border-gray-700",
-  },
-  {
-    name: "חודשי",
+    name: "חודשי מתחדש",
     emoji: "🔥",
-    stars: 2000,
-    period: "30 ימים",
+    stars: 2500,
+    period: "30 ימים — מתחדש אוטומטית",
     features: [
       "כל ההמלצות — ללא הגבלה",
       "Push אוטומטי כל בוקר",
       "ניתוח AI מפורט לכל משחק",
       "גישה ל-30+ ליגות",
-      "חיסכון לעומת שבועי",
+      "הוראת קבע — ביטול בכל רגע",
     ],
-    cta: "התחל חודשי",
+    cta: "התחל עכשיו",
     popular: true,
     style: "pricing-popular",
-  },
-  {
-    name: "3 חודשים",
-    emoji: "💎",
-    stars: 4000,
-    period: "90 ימים",
-    badge: "הכי משתלם",
-    features: [
-      "כל ההמלצות — ללא הגבלה",
-      "Push אוטומטי כל בוקר",
-      "ניתוח AI מפורט לכל משחק",
-      "גישה ל-30+ ליגות",
-      "חיסכון של 47% לעומת שבועי!",
-    ],
-    cta: "התחל 3 חודשים",
-    popular: false,
-    style: "border-[#f5a623]/30",
   },
 ];
 
@@ -82,10 +50,10 @@ export default function Pricing() {
         </div>
 
         <div className="text-center mb-8">
-          <p className="text-gray-500 text-sm">👑 רוצה את כל ההמלצות? בחר חבילת פרימיום:</p>
+          <p className="text-gray-500 text-sm">👑 רוצה את כל ההמלצות? שדרג לפרימיום:</p>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-1 gap-6 max-w-md mx-auto">
           {plans.map((plan) => (
             <div
               key={plan.name}
