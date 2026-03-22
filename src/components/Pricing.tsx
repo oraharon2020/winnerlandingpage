@@ -59,11 +59,6 @@ export default function Pricing() {
               key={plan.name}
               className={`glass-card rounded-2xl p-6 flex flex-col ${plan.style} relative`}
             >
-              {plan.badge && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#f5a623] text-[#0a0e17] text-xs font-bold px-3 py-1 rounded-full">
-                  {plan.badge}
-                </div>
-              )}
               <h3 className="text-lg font-bold text-white mb-1">
                 {plan.emoji} {plan.name}
               </h3>
