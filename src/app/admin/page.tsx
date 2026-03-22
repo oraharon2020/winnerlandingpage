@@ -363,6 +363,9 @@ function UsersTab() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [grantModal, setGrantModal] = useState<UserData | null>(null);
+  const [grantDays, setGrantDays] = useState(30);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -399,6 +402,24 @@ function UsersTab() {
     }, 400);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  async function userAction(userId: number, action: string, days?: number) {
+    setActionLoading(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, action, days }),
+      });
+      if (!res.ok) throw new Error();
+      await fetchUsers();
+    } catch {
+      alert("שגיאה בביצוע הפעולה");
+    } finally {
+      setActionLoading(null);
+      setGrantModal(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -439,6 +460,7 @@ function UsersTab() {
                   <th className="text-center py-2 text-gray-400 font-medium">מנוי</th>
                   <th className="text-center py-2 text-gray-400 font-medium">מקור</th>
                   <th className="text-center py-2 text-gray-400 font-medium">הצטרף</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">פעולות</th>
                 </tr>
               </thead>
               <tbody>
@@ -496,6 +518,52 @@ function UsersTab() {
                     <td className="text-center py-3 text-gray-400 text-xs">
                       {formatDate(u.createdAt)}
                     </td>
+                    <td className="text-center py-3">
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        {actionLoading === u.id ? (
+                          <span className="text-gray-500 text-xs">⏳</span>
+                        ) : (
+                          <>
+                            {u.isPremium ? (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`בטל פרימיום ל-${u.firstName || u.username || u.telegramId}?`))
+                                    userAction(u.id, "revoke_premium");
+                                }}
+                                className="bg-red-900/30 hover:bg-red-900/50 text-red-400 px-2 py-0.5 rounded text-xs transition-colors"
+                              >
+                                ❌ בטל
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setGrantDays(30); setGrantModal(u); }}
+                                className="bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 px-2 py-0.5 rounded text-xs transition-colors"
+                              >
+                                ⭐ תן פרימיום
+                              </button>
+                            )}
+                            {u.isBlocked ? (
+                              <button
+                                onClick={() => userAction(u.id, "unblock")}
+                                className="bg-blue-900/30 hover:bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded text-xs transition-colors"
+                              >
+                                🔓 שחרר
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`חסום את ${u.firstName || u.username || u.telegramId}?`))
+                                    userAction(u.id, "block");
+                                }}
+                                className="bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-0.5 rounded text-xs transition-colors"
+                              >
+                                🚫
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -526,6 +594,47 @@ function UsersTab() {
           </div>
         )}
       </Panel>
+
+      {/* Grant Premium Modal */}
+      {grantModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-bold mb-4">⭐ הענק פרימיום</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              {grantModal.firstName || grantModal.username || grantModal.telegramId}
+            </p>
+            <div className="mb-4">
+              <label className="text-gray-400 text-sm mb-1 block">תקופה</label>
+              <select
+                value={grantDays}
+                onChange={(e) => setGrantDays(parseInt(e.target.value))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              >
+                <option value={7}>7 ימים</option>
+                <option value={30}>30 ימים (חודש)</option>
+                <option value={90}>90 ימים (3 חודשים)</option>
+                <option value={365}>365 ימים (שנה)</option>
+                <option value={36500}>ללא הגבלה</option>
+              </select>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => userAction(grantModal.id, "grant_premium", grantDays)}
+                disabled={actionLoading === grantModal.id}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {actionLoading === grantModal.id ? "⏳ מעדכן..." : "✅ אשר"}
+              </button>
+              <button
+                onClick={() => setGrantModal(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 py-2 rounded-lg text-sm transition-colors"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

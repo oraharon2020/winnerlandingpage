@@ -116,3 +116,89 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// ──────────────────────────────────────────────
+// POST: Grant/revoke premium or block/unblock
+// ──────────────────────────────────────────────
+
+export async function POST(request: NextRequest) {
+  if (!pool) {
+    return NextResponse.json({ error: "DB not configured" }, { status: 500 });
+  }
+
+  let body: { userId: number; action: string; days?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { userId, action, days } = body;
+  if (!userId || !action) {
+    return NextResponse.json({ error: "Missing userId or action" }, { status: 400 });
+  }
+
+  const allowed = ["grant_premium", "revoke_premium", "block", "unblock"];
+  if (!allowed.includes(action)) {
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  try {
+    const client = await pool.connect();
+    try {
+      if (action === "grant_premium") {
+        const durationDays = days || 30;
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+        // Set user as premium
+        await client.query(
+          `UPDATE users SET is_premium = true, updated_at = NOW() WHERE id = $1`,
+          [userId]
+        );
+
+        // Create a subscription record (payment_method = 'admin')
+        await client.query(
+          `INSERT INTO subscriptions (user_id, plan_type, price_paid, starts_at, expires_at, is_active, payment_method, is_recurring)
+           VALUES ($1, 'monthly', 0, NOW(), $2, true, 'admin', false)`,
+          [userId, expiresAt.toISOString()]
+        );
+
+        return NextResponse.json({ ok: true, message: `Premium granted for ${durationDays} days` });
+      }
+
+      if (action === "revoke_premium") {
+        await client.query(
+          `UPDATE users SET is_premium = false, updated_at = NOW() WHERE id = $1`,
+          [userId]
+        );
+        await client.query(
+          `UPDATE subscriptions SET is_active = false WHERE user_id = $1 AND is_active = true`,
+          [userId]
+        );
+        return NextResponse.json({ ok: true, message: "Premium revoked" });
+      }
+
+      if (action === "block") {
+        await client.query(
+          `UPDATE users SET is_blocked = true, updated_at = NOW() WHERE id = $1`,
+          [userId]
+        );
+        return NextResponse.json({ ok: true, message: "User blocked" });
+      }
+
+      if (action === "unblock") {
+        await client.query(
+          `UPDATE users SET is_blocked = false, updated_at = NOW() WHERE id = $1`,
+          [userId]
+        );
+        return NextResponse.json({ ok: true, message: "User unblocked" });
+      }
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("User action error:", error);
+    return NextResponse.json({ error: "Action failed" }, { status: 500 });
+  }
+}
