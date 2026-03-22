@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-// ─── Types ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════
+
 interface DashboardData {
   overview: {
     totalUsers: number;
@@ -60,10 +63,58 @@ interface DashboardData {
     isCorrect: boolean | null;
     matchTime: string;
   }[];
-  campaigns: { source: string; users: string }[];
+  campaigns: { source: string; users: string; paying: string }[];
 }
 
-// ─── Stat Card ───────────────────────────────────────────
+interface UserData {
+  id: number;
+  telegramId: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  isPremium: boolean;
+  isAdmin: boolean;
+  isBlocked: boolean;
+  createdAt: string;
+  subscription: {
+    plan: string;
+    expires: string;
+    active: boolean;
+    recurring: boolean;
+    price: number;
+  } | null;
+  campaignSource: string | null;
+}
+
+interface RejectedBet {
+  fixtureId: number;
+  homeTeam: string;
+  awayTeam: string;
+  league: string;
+  matchTime: string;
+  betType: string;
+  odds: number;
+  reason: string;
+  homeGoals: number | null;
+  awayGoals: number | null;
+  wouldHaveWon: boolean | null;
+  createdAt: string;
+}
+
+interface RejectedSummary {
+  reason: string;
+  total: number;
+  wouldWon: number;
+  wouldLost: number;
+  unchecked: number;
+}
+
+type Tab = "overview" | "users" | "predictions" | "rejected" | "campaigns";
+
+// ═══════════════════════════════════════════════════════════
+// Shared Components
+// ═══════════════════════════════════════════════════════════
+
 function StatCard({
   label,
   value,
@@ -98,7 +149,6 @@ function StatCard({
   );
 }
 
-// ─── Simple Bar ──────────────────────────────────────────
 function WinBar({ wins, losses }: { wins: number; losses: number }) {
   const total = wins + losses;
   if (total === 0) return <div className="h-2 bg-gray-800 rounded-full" />;
@@ -116,95 +166,62 @@ function WinBar({ wins, losses }: { wins: number; losses: number }) {
   );
 }
 
-// ─── Main Dashboard ──────────────────────────────────────
-export default function AdminDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`border border-gray-800 rounded-xl p-6 bg-gray-900/50 ${className}`}>
+      {children}
+    </div>
+  );
+}
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/stats");
-      if (res.status === 401 || res.redirected) {
-        window.location.href = "/admin/login";
-        return;
-      }
-      if (!res.ok) throw new Error("Failed to fetch");
-      const json = await res.json();
-      setData(json);
-      setError("");
-    } catch {
-      setError("שגיאה בטעינת נתונים");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+function rateColor(rate: number) {
+  if (rate >= 70) return "text-emerald-400 font-bold";
+  if (rate >= 60) return "text-amber-400";
+  return "text-red-400";
+}
 
-  useEffect(() => {
-    fetchData();
-    // Auto-refresh every 60 seconds
-    const interval = setInterval(fetchData, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString("he-IL", {
+    day: "numeric",
+    month: "short",
+    year: "2-digit",
+  });
+}
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400 text-lg">⏳ טוען דשבורד...</div>
-      </div>
-    );
-  }
+function formatDateTime(d: string) {
+  return new Date(d).toLocaleDateString("he-IL", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-  if (error || !data) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 text-lg mb-4">{error || "שגיאה"}</p>
-          <button
-            onClick={fetchData}
-            className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-lg"
-          >
-            נסה שוב
-          </button>
-        </div>
-      </div>
-    );
-  }
+// ═══════════════════════════════════════════════════════════
+// Tab: Overview
+// ═══════════════════════════════════════════════════════════
 
-  const { overview, predictions, today, weeklyStats, dailyStats, betTypes, recentRecs } = data;
+function OverviewTab({ data }: { data: DashboardData }) {
+  const { overview, predictions, today, weeklyStats, dailyStats, betTypes } = data;
 
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">📊 Admin Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">WinnerBot — ממשק ניהול</p>
-        </div>
-        <button
-          onClick={fetchData}
-          className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm transition-colors"
-        >
-          🔄 רענן
-        </button>
-      </div>
-
-      {/* ──── Overview Cards ──── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div className="space-y-8">
+      {/* Overview Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="👥 משתמשים"
           value={overview.totalUsers}
-          sub={`+${overview.newUsers7d} ב-7 ימים`}
+          sub={`+${overview.newUsers7d} ב-7 ימים · +${overview.newUsers30d} ב-30`}
           color="blue"
         />
         <StatCard
           label="⭐ מנויים פעילים"
           value={overview.activeSubs}
-          sub={`+${overview.newSubs30d} ב-30 ימים`}
+          sub={`+${overview.newSubs30d} חדשים ב-30 יום`}
           color="purple"
         />
         <StatCard
-          label="🎯 אחוז הצלחה"
+          label="🎯 אחוז הצלחה כולל"
           value={`${predictions.winRate}%`}
           sub={`${predictions.wins}W / ${predictions.losses}L מתוך ${predictions.checked}`}
           color={predictions.winRate >= 70 ? "emerald" : predictions.winRate >= 60 ? "amber" : "red"}
@@ -212,13 +229,13 @@ export default function AdminDashboard() {
         <StatCard
           label="💰 הכנסות 30 יום"
           value={`${overview.revenue30d.toLocaleString()}⭐`}
-          sub={`סה"כ: ${overview.totalRevenue.toLocaleString()}⭐`}
+          sub={`סה"כ כל הזמנים: ${overview.totalRevenue.toLocaleString()}⭐`}
           color="amber"
         />
       </div>
 
-      {/* ──── Today ──── */}
-      <div className="border border-gray-800 rounded-xl p-6 mb-8 bg-gray-900/50">
+      {/* Today */}
+      <Panel>
         <h2 className="text-xl font-bold mb-4">📅 היום</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center">
@@ -238,34 +255,32 @@ export default function AdminDashboard() {
             <p className="text-gray-400 text-sm">⏳ ממתינים</p>
           </div>
         </div>
-      </div>
+      </Panel>
 
-      <div className="grid md:grid-cols-2 gap-8 mb-8">
-        {/* ──── Weekly Win Rate ──── */}
-        <div className="border border-gray-800 rounded-xl p-6 bg-gray-900/50">
+      <div className="grid md:grid-cols-2 gap-8">
+        {/* Weekly Win Rate */}
+        <Panel>
           <h2 className="text-xl font-bold mb-4">📈 אחוז הצלחה שבועי</h2>
           <div className="space-y-3">
             {weeklyStats.map((w) => (
               <div key={w.week}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-400">
-                    {new Date(w.week).toLocaleDateString("he-IL", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                  <span className={w.winRate >= 70 ? "text-emerald-400" : w.winRate >= 60 ? "text-amber-400" : "text-red-400"}>
+                  <span className="text-gray-400">{formatDate(w.week)}</span>
+                  <span className={rateColor(w.winRate)}>
                     {w.winRate}% ({w.wins}W/{w.losses}L)
                   </span>
                 </div>
                 <WinBar wins={w.wins} losses={w.losses} />
               </div>
             ))}
+            {weeklyStats.length === 0 && (
+              <p className="text-gray-600 text-sm">אין נתונים עדיין</p>
+            )}
           </div>
-        </div>
+        </Panel>
 
-        {/* ──── Bet Type Performance ──── */}
-        <div className="border border-gray-800 rounded-xl p-6 bg-gray-900/50">
+        {/* Bet Type Performance */}
+        <Panel>
           <h2 className="text-xl font-bold mb-4">🎰 ביצועים לפי סוג הימור</h2>
           <div className="space-y-3">
             {betTypes.map((bt) => (
@@ -279,12 +294,15 @@ export default function AdminDashboard() {
                 <WinBar wins={bt.wins} losses={bt.losses} />
               </div>
             ))}
+            {betTypes.length === 0 && (
+              <p className="text-gray-600 text-sm">אין נתונים עדיין</p>
+            )}
           </div>
-        </div>
+        </Panel>
       </div>
 
-      {/* ──── Daily Stats (Last 14 days) ──── */}
-      <div className="border border-gray-800 rounded-xl p-6 mb-8 bg-gray-900/50">
+      {/* Daily Stats */}
+      <Panel>
         <h2 className="text-xl font-bold mb-4">📊 14 ימים אחרונים</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -317,9 +335,7 @@ export default function AdminDashboard() {
                     <td className="text-center py-2 text-amber-400">{d.pending}</td>
                     <td className="text-center py-2">
                       {rate !== null ? (
-                        <span className={rate >= 70 ? "text-emerald-400 font-bold" : rate >= 60 ? "text-amber-400" : "text-red-400"}>
-                          {rate}%
-                        </span>
+                        <span className={rateColor(rate)}>{rate}%</span>
                       ) : (
                         <span className="text-gray-600">—</span>
                       )}
@@ -330,50 +346,690 @@ export default function AdminDashboard() {
             </tbody>
           </table>
         </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Tab: Users
+// ═══════════════════════════════════════════════════════════
+
+function UsersTab() {
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: "30",
+        filter,
+      });
+      if (search) params.set("search", search);
+      const res = await fetch(`/api/admin/users?${params}`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setUsers(json.users);
+      setTotalPages(json.pagination.totalPages);
+      setTotal(json.pagination.total);
+    } catch {
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, filter, search]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  // Debounced search
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <input
+          type="text"
+          placeholder="🔍 חפש לפי שם / username / ID..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="flex-1 min-w-[200px] bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-sm"
+        />
+        <select
+          value={filter}
+          onChange={(e) => { setFilter(e.target.value); setPage(1); }}
+          className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
+        >
+          <option value="all">👥 כולם</option>
+          <option value="premium">⭐ פרימיום</option>
+          <option value="free">🆓 חינם</option>
+        </select>
+        <span className="text-gray-500 text-sm">{total} משתמשים</span>
       </div>
 
-      {/* ──── Recent Recommendations ──── */}
-      <div className="border border-gray-800 rounded-xl p-6 bg-gray-900/50">
+      {/* Table */}
+      <Panel>
+        {loading ? (
+          <p className="text-gray-500 text-center py-8">⏳ טוען...</p>
+        ) : users.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">לא נמצאו משתמשים</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">משתמש</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">סטטוס</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">מנוי</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">מקור</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">הצטרף</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                    <td className="py-3">
+                      <div>
+                        <span className="text-white font-medium">
+                          {u.firstName || "—"} {u.lastName || ""}
+                        </span>
+                        {u.username && (
+                          <span className="text-gray-500 text-xs mr-2">@{u.username}</span>
+                        )}
+                      </div>
+                      <span className="text-gray-600 text-xs">ID: {u.telegramId}</span>
+                    </td>
+                    <td className="text-center py-3">
+                      {u.isAdmin && <span className="text-red-400 text-xs">👑 ADMIN</span>}
+                      {u.isBlocked && <span className="text-red-400 text-xs">🚫 חסום</span>}
+                      {!u.isAdmin && !u.isBlocked && (
+                        <span className={u.isPremium ? "text-emerald-400" : "text-gray-500"}>
+                          {u.isPremium ? "⭐ פרימיום" : "🆓 חינם"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-center py-3 text-xs">
+                      {u.subscription ? (
+                        <div>
+                          <span className={u.subscription.active ? "text-emerald-400" : "text-red-400"}>
+                            {u.subscription.active ? "✅" : "❌"} {u.subscription.plan}
+                          </span>
+                          {u.subscription.recurring && (
+                            <span className="text-blue-400 mr-1"> 🔄</span>
+                          )}
+                          <div className="text-gray-600">
+                            {u.subscription.price}⭐ ·{" "}
+                            {u.subscription.expires
+                              ? formatDate(u.subscription.expires)
+                              : "—"}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-600">—</span>
+                      )}
+                    </td>
+                    <td className="text-center py-3">
+                      {u.campaignSource ? (
+                        <span className="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded text-xs">
+                          {u.campaignSource}
+                        </span>
+                      ) : (
+                        <span className="text-gray-600 text-xs">direct</span>
+                      )}
+                    </td>
+                    <td className="text-center py-3 text-gray-400 text-xs">
+                      {formatDate(u.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 mt-4 pt-4 border-t border-gray-800">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 bg-gray-800 rounded text-sm disabled:opacity-30 hover:bg-gray-700"
+            >
+              ◀ הקודם
+            </button>
+            <span className="px-3 py-1 text-gray-400 text-sm">
+              עמוד {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 bg-gray-800 rounded text-sm disabled:opacity-30 hover:bg-gray-700"
+            >
+              הבא ▶
+            </button>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Tab: Predictions (Recent)
+// ═══════════════════════════════════════════════════════════
+
+function PredictionsTab({ data }: { data: DashboardData }) {
+  const { recentRecs } = data;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary line */}
+      <div className="flex gap-4 text-sm text-gray-400">
+        <span>🎯 {data.predictions.winRate}% הצלחה כוללת</span>
+        <span>·</span>
+        <span>✅ {data.predictions.wins} / ❌ {data.predictions.losses}</span>
+        <span>·</span>
+        <span>📊 {data.predictions.total} סה&quot;כ</span>
+      </div>
+
+      <Panel>
         <h2 className="text-xl font-bold mb-4">🕐 המלצות אחרונות</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800">
+                <th className="text-right py-2 text-gray-400 font-medium">זמן</th>
                 <th className="text-right py-2 text-gray-400 font-medium">משחק</th>
                 <th className="text-right py-2 text-gray-400 font-medium">ליגה</th>
                 <th className="text-right py-2 text-gray-400 font-medium">סוג</th>
                 <th className="text-center py-2 text-gray-400 font-medium">מקדם</th>
+                <th className="text-center py-2 text-gray-400 font-medium">prob</th>
                 <th className="text-center py-2 text-gray-400 font-medium">תוצאה</th>
               </tr>
             </thead>
             <tbody>
               {recentRecs.map((r, i) => (
                 <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                  <td className="py-2 text-gray-500 text-xs whitespace-nowrap">
+                    {formatDateTime(r.matchTime)}
+                  </td>
                   <td className="py-2">
                     <span className="text-white">{r.homeTeam}</span>
-                    <span className="text-gray-500 mx-1">vs</span>
+                    <span className="text-gray-600 mx-1">vs</span>
                     <span className="text-white">{r.awayTeam}</span>
                   </td>
                   <td className="py-2 text-gray-400 text-xs">{r.league}</td>
-                  <td className="py-2 text-gray-300">{r.betType}</td>
+                  <td className="py-2">
+                    <span className="bg-gray-800 text-gray-300 px-2 py-0.5 rounded text-xs">
+                      {r.betType}
+                    </span>
+                  </td>
                   <td className="text-center py-2 text-amber-400">{r.odds}</td>
+                  <td className="text-center py-2 text-gray-400 text-xs">{r.probability}%</td>
                   <td className="text-center py-2 text-lg">
-                    {r.isCorrect === true
-                      ? "✅"
-                      : r.isCorrect === false
-                        ? "❌"
-                        : "⏳"}
+                    {r.isCorrect === true ? "✅" : r.isCorrect === false ? "❌" : "⏳"}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Tab: Rejected Bets
+// ═══════════════════════════════════════════════════════════
+
+function RejectedTab() {
+  const [rejected, setRejected] = useState<RejectedBet[]>([]);
+  const [summary, setSummary] = useState<RejectedSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(7);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const fetchRejected = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/rejected?days=${days}&page=${page}&limit=30`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setRejected(json.rejected);
+      setSummary(json.summary);
+      setTotalPages(json.pagination.totalPages);
+    } catch {
+      setRejected([]);
+      setSummary([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [days, page]);
+
+  useEffect(() => {
+    fetchRejected();
+  }, [fetchRejected]);
+
+  // Summary stats
+  const totalRejected = summary.reduce((s, r) => s + r.total, 0);
+  const totalWouldWon = summary.reduce((s, r) => s + r.wouldWon, 0);
+  const totalWouldLost = summary.reduce((s, r) => s + r.wouldLost, 0);
+  const checkedRejected = totalWouldWon + totalWouldLost;
+  const rejectedWinRate = checkedRejected > 0 ? Math.round((totalWouldWon / checkedRejected) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex gap-3 items-center">
+        <select
+          value={days}
+          onChange={(e) => { setDays(parseInt(e.target.value)); setPage(1); }}
+          className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+        >
+          <option value={3}>3 ימים</option>
+          <option value={7}>7 ימים</option>
+          <option value={14}>14 ימים</option>
+          <option value={30}>30 ימים</option>
+        </select>
+        <span className="text-gray-500 text-sm">
+          {totalRejected} נדחו · {checkedRejected > 0 && `${rejectedWinRate}% היו מנצחים`}
+        </span>
       </div>
 
+      {/* Summary by Reason */}
+      <Panel>
+        <h2 className="text-xl font-bold mb-4">📋 סיכום לפי סיבת דחייה</h2>
+        {loading ? (
+          <p className="text-gray-500 text-center py-4">⏳ טוען...</p>
+        ) : summary.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">אין נתונים לתקופה זו</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">סיבה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">נדחו</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">היו מנצחים</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">היו מפסידים</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">% ניצחון</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.map((s) => {
+                  const checked = s.wouldWon + s.wouldLost;
+                  const rate = checked > 0 ? Math.round((s.wouldWon / checked) * 100) : null;
+                  return (
+                    <tr key={s.reason} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="py-2 text-gray-300 text-xs max-w-[300px] truncate">{s.reason}</td>
+                      <td className="text-center py-2">{s.total}</td>
+                      <td className="text-center py-2 text-emerald-400">{s.wouldWon}</td>
+                      <td className="text-center py-2 text-red-400">{s.wouldLost}</td>
+                      <td className="text-center py-2">
+                        {rate !== null ? (
+                          <span className={rate <= 50 ? "text-emerald-400" : "text-red-400"}>
+                            {rate}%
+                          </span>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-gray-600 text-xs mt-3">
+          💡 אם &quot;% ניצחון&quot; נמוך = הפילטר עובד טוב (דחה הימורים מפסידים)
+        </p>
+      </Panel>
+
+      {/* Rejected List */}
+      <Panel>
+        <h2 className="text-xl font-bold mb-4">🚫 הימורים שנדחו</h2>
+        {loading ? (
+          <p className="text-gray-500 text-center py-4">⏳ טוען...</p>
+        ) : rejected.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">אין נתונים</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">משחק</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">סוג</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">מקדם</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">סיבה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">תוצאה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">היה?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rejected.map((r, i) => (
+                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                    <td className="py-2">
+                      <span className="text-white text-xs">{r.homeTeam} vs {r.awayTeam}</span>
+                      <div className="text-gray-600 text-xs">{r.league}</div>
+                    </td>
+                    <td className="py-2 text-gray-300 text-xs">{r.betType}</td>
+                    <td className="text-center py-2 text-amber-400 text-xs">{r.odds || "—"}</td>
+                    <td className="py-2 text-gray-500 text-xs max-w-[200px] truncate">{r.reason}</td>
+                    <td className="text-center py-2 text-xs text-gray-400">
+                      {r.homeGoals !== null ? `${r.homeGoals}-${r.awayGoals}` : "—"}
+                    </td>
+                    <td className="text-center py-2 text-lg">
+                      {r.wouldHaveWon === true ? "✅" : r.wouldHaveWon === false ? "❌" : "⏳"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 mt-4 pt-4 border-t border-gray-800">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 bg-gray-800 rounded text-sm disabled:opacity-30 hover:bg-gray-700"
+            >
+              ◀ הקודם
+            </button>
+            <span className="px-3 py-1 text-gray-400 text-sm">
+              עמוד {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 bg-gray-800 rounded text-sm disabled:opacity-30 hover:bg-gray-700"
+            >
+              הבא ▶
+            </button>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Tab: Campaigns
+// ═══════════════════════════════════════════════════════════
+
+function CampaignsTab({ data }: { data: DashboardData }) {
+  const { campaigns, overview } = data;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <StatCard label="👥 סה&quot;כ משתמשים" value={overview.totalUsers} color="blue" />
+        <StatCard label="📢 מקמפיינים" value={campaigns.reduce((s, c) => s + parseInt(c.users || "0"), 0)} color="purple" />
+        <StatCard
+          label="💰 Conversion"
+          value={
+            overview.totalUsers > 0
+              ? `${Math.round((overview.activeSubs / overview.totalUsers) * 100)}%`
+              : "0%"
+          }
+          sub={`${overview.activeSubs} משלמים מתוך ${overview.totalUsers}`}
+          color="emerald"
+        />
+      </div>
+
+      {/* Deep Link Generator */}
+      <Panel>
+        <h2 className="text-xl font-bold mb-4">🔗 יצירת Deep Links לקמפיינים</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <DeepLinkCard label="Facebook" source="fb_main" />
+          <DeepLinkCard label="Google Ads" source="google_ads" />
+          <DeepLinkCard label="TikTok" source="tiktok_v1" />
+          <DeepLinkCard label="Instagram" source="ig_story" />
+        </div>
+        <p className="text-gray-600 text-xs mt-3">
+          💡 שנה את ה-source ליצירת קישורים לקמפיינים ספציפיים. לדוגמה: fb_march26, google_brand
+        </p>
+      </Panel>
+
+      {/* Campaign Results */}
+      <Panel>
+        <h2 className="text-xl font-bold mb-4">📊 תוצאות קמפיינים</h2>
+        {campaigns.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 mb-2">אין נתונים עדיין</p>
+            <p className="text-gray-600 text-sm">
+              משתמשים שנכנסים דרך Deep Links יופיעו כאן אוטומטית
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">מקור</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">משתמשים</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">משלמים</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">Conversion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => {
+                  const users = parseInt(c.users || "0");
+                  const paying = parseInt(c.paying || "0");
+                  const conv = users > 0 ? Math.round((paying / users) * 100) : 0;
+                  return (
+                    <tr key={c.source} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="py-3">
+                        <span className="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded text-xs">
+                          {c.source}
+                        </span>
+                      </td>
+                      <td className="text-center py-3 text-white">{users}</td>
+                      <td className="text-center py-3 text-emerald-400">{paying}</td>
+                      <td className="text-center py-3">
+                        <span className={conv > 5 ? "text-emerald-400 font-bold" : "text-gray-400"}>
+                          {conv}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function DeepLinkCard({ label, source }: { label: string; source: string }) {
+  const [src, setSrc] = useState(source);
+  const link = `https://t.me/Mywinnerisraelbot?start=${src}`;
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
+      <p className="text-gray-300 font-medium text-sm mb-2">{label}</p>
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text"
+          value={src}
+          onChange={(e) => setSrc(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+          className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-white font-mono"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 text-xs text-gray-400 truncate">{link}</code>
+        <button
+          onClick={copy}
+          className="text-xs bg-emerald-600 hover:bg-emerald-500 px-2 py-1 rounded transition-colors whitespace-nowrap"
+        >
+          {copied ? "✅ הועתק" : "📋 העתק"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Main Dashboard
+// ═══════════════════════════════════════════════════════════
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "overview", label: "סקירה", icon: "📊" },
+  { id: "predictions", label: "המלצות", icon: "🎯" },
+  { id: "users", label: "משתמשים", icon: "👥" },
+  { id: "rejected", label: "נדחו", icon: "🚫" },
+  { id: "campaigns", label: "קמפיינים", icon: "📢" },
+];
+
+export default function AdminDashboard() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/stats");
+      if (res.status === 401 || res.redirected) {
+        window.location.href = "/admin/login";
+        return;
+      }
+      if (!res.ok) throw new Error("Failed to fetch");
+      const json = await res.json();
+      setData(json);
+      setError("");
+    } catch {
+      setError("שגיאה בטעינת נתונים");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  async function handleLogout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    window.location.href = "/admin/login";
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-400 text-lg">⏳ טוען דשבורד...</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 text-lg mb-4">{error || "שגיאה"}</p>
+          <button
+            onClick={fetchData}
+            className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-lg"
+          >
+            נסה שוב
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      {/* ──── Header ──── */}
+      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">📊 WinnerBot Admin</h1>
+            <p className="text-gray-600 text-xs mt-0.5">
+              עדכון אחרון: {new Date().toLocaleTimeString("he-IL")}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchData}
+              className="bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-sm transition-colors"
+            >
+              🔄 רענן
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-red-900/30 hover:bg-red-900/50 text-red-400 px-3 py-1.5 rounded-lg text-sm transition-colors"
+            >
+              🚪 יציאה
+            </button>
+          </div>
+        </div>
+
+        {/* ──── Tabs ──── */}
+        <div className="max-w-7xl mx-auto px-4 md:px-8">
+          <div className="flex gap-1 overflow-x-auto pb-0">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-emerald-500 text-emerald-400"
+                    : "border-transparent text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                {tab.icon} {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {/* ──── Content ──── */}
+      <main className="max-w-7xl mx-auto p-4 md:p-8">
+        {activeTab === "overview" && <OverviewTab data={data} />}
+        {activeTab === "predictions" && <PredictionsTab data={data} />}
+        {activeTab === "users" && <UsersTab />}
+        {activeTab === "rejected" && <RejectedTab />}
+        {activeTab === "campaigns" && <CampaignsTab data={data} />}
+      </main>
+
       {/* Footer */}
-      <div className="text-center text-gray-600 text-xs mt-8 pb-4">
-        WinnerBot Admin · Auto-refresh every 60s
+      <div className="text-center text-gray-700 text-xs py-4">
+        WinnerBot Admin · Auto-refresh 60s
       </div>
     </div>
   );
