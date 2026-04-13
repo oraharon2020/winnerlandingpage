@@ -19,6 +19,18 @@ export default function Footer() {
             >
               📢 ערוץ טיפים
             </a>
+            <a
+              href="/privacy"
+              className="text-gray-400 hover:text-[#f5a623] text-sm transition-colors"
+            >
+              מדיניות פרטיות
+            </a>
+            <a
+              href="/terms"
+              className="text-gray-400 hover:text-[#f5a623] text-sm transition-colors"
+            >
+              תנאי שימוש
+            </a>
           </div>
 
           <div className="text-gray-500 text-sm text-center">

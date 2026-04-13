@@ -69,6 +69,14 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Protect /checkout — require logged-in user
+  if (pathname.startsWith("/checkout")) {
+    if (!user) {
+      const loginUrl = new URL("/auth/login", request.url);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
   // Redirect logged-in users away from auth pages
   if (pathname.startsWith("/auth/") && user) {
     const dashboardUrl = new URL("/dashboard", request.url);
@@ -79,5 +87,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/auth/:path*"],
+  matcher: ["/admin/:path*", "/dashboard/:path*", "/auth/:path*", "/checkout/:path*"],
 };

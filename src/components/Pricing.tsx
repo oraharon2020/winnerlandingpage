@@ -64,7 +64,7 @@ export default function Pricing() {
             </ul>
 
             <a
-              href="/auth/signup"
+              href="/checkout?plan=weekly"
               className="block text-center py-3 rounded-xl font-bold text-sm transition-all bg-white/5 hover:bg-white/10 text-white border border-white/10"
             >
               נסה שבוע
@@ -100,7 +100,7 @@ export default function Pricing() {
             </ul>
 
             <a
-              href="/auth/signup"
+              href="/checkout?plan=monthly"
               className="block text-center py-3 rounded-xl font-bold text-sm transition-all bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17]"
             >
               התחל לנצח

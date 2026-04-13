@@ -109,7 +109,7 @@ interface RejectedSummary {
   unchecked: number;
 }
 
-type Tab = "overview" | "users" | "predictions" | "rejected" | "campaigns";
+type Tab = "overview" | "users" | "predictions" | "rejected" | "campaigns" | "subscriptions";
 
 // ═══════════════════════════════════════════════════════════
 // Shared Components
@@ -884,6 +884,226 @@ function RejectedTab() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Tab: Subscriptions
+// ═══════════════════════════════════════════════════════════
+
+interface SubData {
+  id: number;
+  userId: number;
+  planType: string;
+  pricePaid: number;
+  startsAt: string;
+  expiresAt: string;
+  isActive: boolean;
+  paymentMethod: string;
+  isRecurring: boolean;
+  paypalOrderId: string | null;
+  createdAt: string;
+  userName: string;
+}
+
+function SubscriptionsTab() {
+  const [subs, setSubs] = useState<SubData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+
+  const fetchSubs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/subscriptions?page=${page}&filter=${filter}&limit=30`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setSubs(data.subscriptions);
+      setTotalPages(data.pagination.totalPages);
+    } catch {
+      setSubs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, filter]);
+
+  useEffect(() => {
+    fetchSubs();
+  }, [fetchSubs]);
+
+  async function handleAction(action: string, subscriptionId: number, extra?: Record<string, unknown>) {
+    setActionLoading(subscriptionId);
+    try {
+      const res = await fetch("/api/admin/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, subscriptionId, ...extra }),
+      });
+      if (res.ok) {
+        fetchSubs();
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const filters = [
+    { id: "all", label: "הכל" },
+    { id: "active", label: "פעילים" },
+    { id: "expired", label: "פג תוקף" },
+    { id: "paypal", label: "PayPal" },
+    { id: "admin", label: "אדמין" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="flex gap-2 flex-wrap">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => { setFilter(f.id); setPage(1); }}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              filter === f.id
+                ? "bg-emerald-600 text-white"
+                : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <Panel>
+        {loading ? (
+          <p className="text-gray-500 text-center py-8">⏳ טוען...</p>
+        ) : subs.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">אין מנויים</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">משתמש</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">חבילה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">מחיר</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">תשלום</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">תוקף</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">סטטוס</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subs.map((s) => {
+                  const isExpired = new Date(s.expiresAt) < new Date();
+                  const isActiveNow = s.isActive && !isExpired;
+                  return (
+                    <tr key={s.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="py-3 text-gray-300">{s.userName}</td>
+                      <td className="text-center py-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          s.planType === "monthly" ? "bg-purple-900/30 text-purple-400" :
+                          s.planType === "weekly" ? "bg-blue-900/30 text-blue-400" :
+                          "bg-gray-800 text-gray-400"
+                        }`}>
+                          {s.planType}
+                        </span>
+                      </td>
+                      <td className="text-center py-3 text-white">₪{s.pricePaid}</td>
+                      <td className="text-center py-3">
+                        <span className={`text-xs ${
+                          s.paymentMethod === "paypal" ? "text-blue-400" : "text-amber-400"
+                        }`}>
+                          {s.paymentMethod === "paypal" ? "💳 PayPal" : "👑 אדמין"}
+                        </span>
+                      </td>
+                      <td className="text-center py-3 text-gray-400 text-xs">
+                        {formatDate(s.expiresAt)}
+                      </td>
+                      <td className="text-center py-3">
+                        <span className={`text-xs font-medium ${
+                          isActiveNow ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {isActiveNow ? "✅ פעיל" : "❌ לא פעיל"}
+                        </span>
+                      </td>
+                      <td className="text-center py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          {isActiveNow && (
+                            <>
+                              <button
+                                onClick={() => handleAction("extend", s.id, { days: 7 })}
+                                disabled={actionLoading === s.id}
+                                className="text-xs bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 px-2 py-1 rounded transition-colors"
+                                title="הארך 7 ימים"
+                              >
+                                +7
+                              </button>
+                              <button
+                                onClick={() => handleAction("extend", s.id, { days: 30 })}
+                                disabled={actionLoading === s.id}
+                                className="text-xs bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 px-2 py-1 rounded transition-colors"
+                                title="הארך 30 ימים"
+                              >
+                                +30
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm("בטל מנוי?")) handleAction("cancel", s.id);
+                                }}
+                                disabled={actionLoading === s.id}
+                                className="text-xs bg-red-600/20 text-red-400 hover:bg-red-600/40 px-2 py-1 rounded transition-colors"
+                              >
+                                ביטול
+                              </button>
+                            </>
+                          )}
+                          {!isActiveNow && (
+                            <button
+                              onClick={() => handleAction("extend", s.id, { days: 30 })}
+                              disabled={actionLoading === s.id}
+                              className="text-xs bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 px-2 py-1 rounded transition-colors"
+                            >
+                              חדש 30 ימים
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 mt-4 pt-4 border-t border-gray-800">
+            <button
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 rounded bg-gray-800 text-sm disabled:opacity-30"
+            >
+              ←
+            </button>
+            <span className="text-sm text-gray-400 px-2 py-1">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 rounded bg-gray-800 text-sm disabled:opacity-30"
+            >
+              →
+            </button>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // Tab: Campaigns
 // ═══════════════════════════════════════════════════════════
 
@@ -1017,6 +1237,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "סקירה", icon: "📊" },
   { id: "predictions", label: "המלצות", icon: "🎯" },
   { id: "users", label: "משתמשים", icon: "👥" },
+  { id: "subscriptions", label: "מנויים", icon: "💳" },
   { id: "rejected", label: "נדחו", icon: "🚫" },
   { id: "campaigns", label: "קמפיינים", icon: "📢" },
 ];
@@ -1132,6 +1353,7 @@ export default function AdminDashboard() {
         {activeTab === "overview" && <OverviewTab data={data} />}
         {activeTab === "predictions" && <PredictionsTab data={data} />}
         {activeTab === "users" && <UsersTab />}
+        {activeTab === "subscriptions" && <SubscriptionsTab />}
         {activeTab === "rejected" && <RejectedTab />}
         {activeTab === "campaigns" && <CampaignsTab data={data} />}
       </main>
