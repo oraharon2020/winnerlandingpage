@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "תודה! | Winner Bot",
+  title: "תודה! | הטיפ המנצח",
   robots: "noindex, nofollow",
 };
 
@@ -14,17 +14,17 @@ export default function ThankYou() {
           מעולה! אתה כבר בדרך
         </h1>
         <p className="text-gray-400 text-lg mb-8">
-          עכשיו פתח את הבוט בטלגרם ולחץ <strong className="text-white">Start</strong> כדי
-          להתחיל לקבל טיפים חכמים.
+          ההרשמה הושלמה! עכשיו נשאר רק להצטרף לערוץ הטיפים שלנו
+          ולהתחיל לקבל <strong className="text-white">הזדמנויות כל בוקר</strong>.
         </p>
         <div className="space-y-4">
           <a
-            href="https://t.me/Mywinnerisraelbot"
+            href="https://t.me/WinnerBotTips"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-8 py-4 rounded-xl text-lg transition-all"
           >
-            פתח את הבוט בטלגרם →
+            📢 הצטרף לערוץ הטיפים →
           </a>
           <div>
             <a

@@ -151,7 +151,7 @@ export default function BotSimulation() {
           </svg>
           <img src="/bot-logo.png" alt="W" width={36} height={36} className="rounded-full" style={{ background: "#f5a623" }} />
           <div className="flex-1 min-w-0">
-            <div className="text-white font-medium text-[13px]">WinnerBot 🎯</div>
+            <div className="text-white font-medium text-[13px]">הטיפ המנצח 🏆</div>
             <div className="text-[11px] h-4 relative">
               <span style={{ animation: `hdrB ${LOOP}s infinite`, position: "absolute" }} className="text-gray-500">בוט</span>
               <span style={{ animation: `hdrT ${LOOP}s infinite`, opacity: 0, position: "absolute" }} className="text-[#4ea4d9]">מקליד...</span>
@@ -171,12 +171,12 @@ export default function BotSimulation() {
           <BotMsg
             animName="m0"
             btnAnimName="b0"
-            html="🎯 <b>ברוך הבא ל-WinnerBot!</b><br><br>🧠 מערכת AI שמנתחת אלפי משחקים<br>🆓 המלצה 1 ביום — בחינם<br>👑 שדרג לפרימיום לכל ההמלצות<br><br>⚠️ <i>18+ | הימור אחראי בלבד</i>"
-            buttons={["🎯 המלצות היום", "⭐ שדרג לפרימיום"]}
+            html="� <b>ברוך הבא לטיפ המנצח!</b><br><br>⚽ טיפים מקצועיים לכדורגל כל יום<br>🆓 טיפ 1 ביום — בחינם<br>👑 שדרג לכל הטיפים<br><br>⚠️ <i>18+ | הימור אחראי בלבד</i>"
+            buttons={["🎯 הטיפים של היום", "👑 שדרג לפרימיום"]}
           />
 
           {/* User: המלצות */}
-          <UserMsg animName="m1" text="🎯 המלצות היום" />
+          <UserMsg animName="m1" text="🎯 הטיפים של היום" />
 
           {/* Typing 2 */}
           <div style={anim("t1")}><Dots /></div>

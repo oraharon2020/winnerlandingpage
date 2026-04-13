@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 
-const BOT_LINK = "https://t.me/Mywinnerisraelbot";
-
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
 
@@ -24,32 +22,38 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">⚽</span>
+            <span className="text-2xl">🏆</span>
             <span className="text-xl font-bold text-white">
-              Winner<span className="text-[#f5a623]">Bot</span>
+              הטיפ <span className="text-[#f5a623]">המנצח</span>
             </span>
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-300">
-            <a href="#features" className="hover:text-[#f5a623] transition">
+            <a href="#how" className="hover:text-[#f5a623] transition">
               איך זה עובד
             </a>
             <a href="#pricing" className="hover:text-[#f5a623] transition">
-              מחירים
+              מסלולים
             </a>
             <a href="#faq" className="hover:text-[#f5a623] transition">
               שאלות נפוצות
             </a>
           </div>
 
-          <a
-            href={BOT_LINK}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
-          >
-            התחל בחינם →
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href="/auth/login"
+              className="text-gray-300 hover:text-white text-sm transition-all"
+            >
+              התחברות
+            </a>
+            <a
+              href="/auth/signup"
+              className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
+            >
+              התחל לנצח →
+            </a>
+          </div>
         </div>
       </div>
     </nav>

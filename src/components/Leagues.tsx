@@ -33,7 +33,7 @@ export default function Leagues() {
             <span className="text-[#f5a623]">30+</span> ליגות מכל העולם
           </h2>
           <p className="text-gray-400">
-            מפרמייר ליג ועד ליגת העל — הבוט מכסה הכל
+            מפרמייר ליג ועד ליגת העל — אנחנו מכסים הכל
           </p>
         </div>
 

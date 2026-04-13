@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 
 const stats = [
-  { value: 70, suffix: "%", label: "אחוזי דיוק" },
+  { value: 500, suffix: "+", label: "תפיסות מוצלחות" },
   { value: 30, suffix: "+", label: "ליגות מנותחות" },
-  { value: 3, suffix: "", label: "מומחי AI" },
-  { value: 1000, suffix: "+", label: "משחקים נותחו" },
+  { value: 12000, suffix: "+", label: "משחקים נותחו" },
+  { value: 7, suffix: "", label: "ימים בשבוע — פעיל תמיד" },
 ];
 
 function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {

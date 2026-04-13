@@ -976,7 +976,7 @@ function CampaignsTab({ data }: { data: DashboardData }) {
 
 function DeepLinkCard({ label, source }: { label: string; source: string }) {
   const [src, setSrc] = useState(source);
-  const link = `https://t.me/Mywinnerisraelbot?start=${src}`;
+  const link = `https://t.me/WinnerBotTips`;
   const [copied, setCopied] = useState(false);
 
   function copy() {
