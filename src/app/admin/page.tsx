@@ -109,7 +109,7 @@ interface RejectedSummary {
   unchecked: number;
 }
 
-type Tab = "overview" | "users" | "predictions" | "rejected" | "campaigns" | "subscriptions";
+type Tab = "overview" | "users" | "predictions" | "rejected" | "campaigns" | "subscriptions" | "plans" | "coupons";
 
 // ═══════════════════════════════════════════════════════════
 // Shared Components
@@ -1104,6 +1104,742 @@ function SubscriptionsTab() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Tab: Plans Management
+// ═══════════════════════════════════════════════════════════
+
+interface PlanData {
+  id: string;
+  nameHe: string;
+  icon: string;
+  price: number;
+  originalPrice: number | null;
+  period: string;
+  periodHe: string;
+  durationDays: number;
+  features: string[];
+  maxTipsPerDay: number;
+  badge: string | null;
+  isPopular: boolean;
+  isActive: boolean;
+  isFree: boolean;
+  ctaText: string;
+  ctaLink: string | null;
+  sortOrder: number;
+  description: string | null;
+}
+
+const EMPTY_PLAN: PlanData = {
+  id: "",
+  nameHe: "",
+  icon: "⭐",
+  price: 0,
+  originalPrice: null,
+  period: "month",
+  periodHe: "/ חודש",
+  durationDays: 30,
+  features: [],
+  maxTipsPerDay: 999,
+  badge: null,
+  isPopular: false,
+  isActive: true,
+  isFree: false,
+  ctaText: "התחל עכשיו",
+  ctaLink: null,
+  sortOrder: 0,
+  description: null,
+};
+
+function PlansTab() {
+  const [plans, setPlans] = useState<PlanData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<PlanData | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [featuresText, setFeaturesText] = useState("");
+  const [migrated, setMigrated] = useState<boolean | null>(null);
+
+  const fetchPlans = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/plans");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setPlans(data.plans);
+      setMigrated(true);
+    } catch {
+      setPlans([]);
+      setMigrated(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPlans(); }, [fetchPlans]);
+
+  async function runMigration() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/setup-plans", { method: "POST" });
+      if (res.ok) {
+        setMigrated(true);
+        fetchPlans();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEdit(plan: PlanData) {
+    setEditing({ ...plan });
+    setFeaturesText(plan.features.join("\n"));
+    setIsNew(false);
+  }
+
+  function startCreate() {
+    setEditing({ ...EMPTY_PLAN });
+    setFeaturesText("");
+    setIsNew(true);
+  }
+
+  async function savePlan() {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const planToSave = { ...editing, features: featuresText.split("\n").map(f => f.trim()).filter(Boolean) };
+      const res = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: isNew ? "create" : "update", plan: planToSave }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditing(null);
+        fetchPlans();
+      } else {
+        alert(data.error || "שגיאה בשמירה");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleField(planId: string, field: string) {
+    await fetch("/api/admin/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "toggle", planId, field }),
+    });
+    fetchPlans();
+  }
+
+  async function deletePlan(planId: string) {
+    if (!confirm(`למחוק את החבילה "${planId}"?`)) return;
+    const res = await fetch("/api/admin/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", planId }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      fetchPlans();
+      if (data.message?.includes("deactivated")) alert("החבילה הושבתה (יש מנויים פעילים)");
+    }
+  }
+
+  // Migration needed
+  if (migrated === false) {
+    return (
+      <Panel>
+        <div className="text-center py-8">
+          <p className="text-gray-400 mb-4">טבלת חבילות לא נמצאה. צריך להריץ מיגרציה.</p>
+          <button
+            onClick={runMigration}
+            disabled={saving}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          >
+            {saving ? "⏳ מריץ..." : "🚀 הרץ מיגרציה"}
+          </button>
+        </div>
+      </Panel>
+    );
+  }
+
+  // Editor modal
+  if (editing) {
+    return (
+      <Panel>
+        <h3 className="text-white font-bold text-lg mb-4">
+          {isNew ? "➕ חבילה חדשה" : `✏️ עריכת: ${editing.nameHe}`}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {isNew && (
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">מזהה (אנגלית, ללא רווחים)</label>
+              <input
+                value={editing.id}
+                onChange={(e) => setEditing({ ...editing, id: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                placeholder="yearly"
+              />
+            </div>
+          )}
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">שם (עברית)</label>
+            <input
+              value={editing.nameHe}
+              onChange={(e) => setEditing({ ...editing, nameHe: e.target.value })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="חבילה שנתית"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">אייקון</label>
+            <input
+              value={editing.icon}
+              onChange={(e) => setEditing({ ...editing, icon: e.target.value })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="👑"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">מחיר (₪)</label>
+            <input
+              type="number"
+              value={editing.price}
+              onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">מחיר מקורי (לקו חוצה, ריק=ללא)</label>
+            <input
+              type="number"
+              value={editing.originalPrice ?? ""}
+              onChange={(e) => setEditing({ ...editing, originalPrice: e.target.value ? Number(e.target.value) : null })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="399"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">תקופה</label>
+            <select
+              value={editing.period}
+              onChange={(e) => {
+                const p = e.target.value;
+                const map: Record<string, { periodHe: string; durationDays: number }> = {
+                  week: { periodHe: "/ שבוע", durationDays: 7 },
+                  month: { periodHe: "/ חודש", durationDays: 30 },
+                  year: { periodHe: "/ שנה", durationDays: 365 },
+                  forever: { periodHe: "לצמיתות", durationDays: 0 },
+                };
+                setEditing({ ...editing, period: p, ...(map[p] || {}) });
+              }}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            >
+              <option value="week">שבוע</option>
+              <option value="month">חודש</option>
+              <option value="year">שנה</option>
+              <option value="forever">לצמיתות</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">טקסט תקופה (מוצג)</label>
+            <input
+              value={editing.periodHe}
+              onChange={(e) => setEditing({ ...editing, periodHe: e.target.value })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="/ חודש"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">ימים</label>
+            <input
+              type="number"
+              value={editing.durationDays}
+              onChange={(e) => setEditing({ ...editing, durationDays: Number(e.target.value) })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">באדג׳ (תווית מבצע)</label>
+            <input
+              value={editing.badge ?? ""}
+              onChange={(e) => setEditing({ ...editing, badge: e.target.value || null })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="50% הנחה — מבצע השקה"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">טקסט כפתור</label>
+            <input
+              value={editing.ctaText}
+              onChange={(e) => setEditing({ ...editing, ctaText: e.target.value })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="התחל לנצח"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">לינק כפתור (ריק = checkout)</label>
+            <input
+              value={editing.ctaLink ?? ""}
+              onChange={(e) => setEditing({ ...editing, ctaLink: e.target.value || null })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="/auth/signup"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">סדר מיון</label>
+            <input
+              type="number"
+              value={editing.sortOrder}
+              onChange={(e) => setEditing({ ...editing, sortOrder: Number(e.target.value) })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">תיאור קצר</label>
+            <input
+              value={editing.description ?? ""}
+              onChange={(e) => setEditing({ ...editing, description: e.target.value || null })}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              placeholder="7 ימים — בלי התחייבות"
+            />
+          </div>
+          <div className="flex items-center gap-6 md:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editing.isPopular}
+                onChange={(e) => setEditing({ ...editing, isPopular: e.target.checked })}
+                className="rounded"
+              />
+              ⭐ הכי משתלם
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editing.isFree}
+                onChange={(e) => setEditing({ ...editing, isFree: e.target.checked })}
+                className="rounded"
+              />
+              🆓 חינם
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editing.isActive}
+                onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })}
+                className="rounded"
+              />
+              ✅ פעיל
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="text-gray-400 text-xs block mb-1">פיצ׳רים (שורה לכל פיצ׳ר)</label>
+          <textarea
+            value={featuresText}
+            onChange={(e) => setFeaturesText(e.target.value)}
+            rows={5}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+            placeholder={"כל הטיפים — ללא הגבלה\nדשבורד תוצאות מלא\nביטול בכל רגע"}
+          />
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={savePlan}
+            disabled={saving || !editing.nameHe || (isNew && !editing.id)}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          >
+            {saving ? "⏳ שומר..." : "💾 שמור"}
+          </button>
+          <button
+            onClick={() => setEditing(null)}
+            className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          >
+            ביטול
+          </button>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-white font-bold">ניהול חבילות</h3>
+        <button
+          onClick={startCreate}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          ➕ חבילה חדשה
+        </button>
+      </div>
+
+      <Panel>
+        {loading ? (
+          <p className="text-gray-500 text-center py-8">⏳ טוען...</p>
+        ) : plans.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">אין חבילות</p>
+        ) : (
+          <div className="space-y-3">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
+                  p.isActive
+                    ? "border-gray-700 bg-gray-900/50"
+                    : "border-red-900/30 bg-red-950/10 opacity-60"
+                }`}
+              >
+                <span className="text-2xl">{p.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-bold">{p.nameHe}</span>
+                    {p.isPopular && <span className="text-[10px] bg-[#f5a623] text-[#0a0e17] px-1.5 py-0.5 rounded-full font-bold">הכי משתלם</span>}
+                    {p.isFree && <span className="text-[10px] bg-gray-600 text-white px-1.5 py-0.5 rounded-full">חינם</span>}
+                    {!p.isActive && <span className="text-[10px] bg-red-800 text-white px-1.5 py-0.5 rounded-full">מושבת</span>}
+                    {p.badge && <span className="text-[10px] bg-emerald-800 text-emerald-300 px-1.5 py-0.5 rounded-full">{p.badge}</span>}
+                  </div>
+                  <div className="text-sm text-gray-400 mt-0.5">
+                    {p.originalPrice && <span className="line-through text-gray-600 ml-1">₪{p.originalPrice}</span>}
+                    <span className="text-white font-medium">₪{p.price}</span>
+                    <span className="text-gray-500 mr-1">{p.periodHe}</span>
+                    {p.description && <span className="text-gray-600 mr-2">· {p.description}</span>}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    {p.features.length} פיצ׳רים · סדר: {p.sortOrder} · {p.durationDays} ימים
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => toggleField(p.id, "is_active")}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${
+                      p.isActive
+                        ? "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40"
+                        : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+                    }`}
+                    title={p.isActive ? "השבת" : "הפעל"}
+                  >
+                    {p.isActive ? "🟢" : "🔴"}
+                  </button>
+                  <button
+                    onClick={() => startEdit(p)}
+                    className="text-xs bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 px-2 py-1 rounded transition-colors"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => deletePlan(p.id)}
+                    className="text-xs bg-red-600/20 text-red-400 hover:bg-red-600/40 px-2 py-1 rounded transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <p className="text-gray-500 text-xs">
+          💡 שינויים בחבילות משפיעים ישירות על סקשן התמחור באתר ועל דף התשלום.
+          חבילות פעילות מוצגות לפי סדר מיון. חבילות עם מנויים פעילים יושבתו במקום להימחק.
+        </p>
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Tab: Coupons Management
+// ═══════════════════════════════════════════════════════════
+
+interface CouponData {
+  id: number;
+  code: string;
+  discountPercent: number | null;
+  discountAmount: number | null;
+  planId: string | null;
+  planName: string | null;
+  maxUses: number | null;
+  currentUses: number;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+function CouponsTab() {
+  const [coupons, setCoupons] = useState<CouponData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [plans, setPlans] = useState<{ id: string; nameHe: string }[]>([]);
+
+  // New coupon form
+  const [newCode, setNewCode] = useState("");
+  const [newType, setNewType] = useState<"percent" | "amount">("percent");
+  const [newDiscount, setNewDiscount] = useState("");
+  const [newPlanId, setNewPlanId] = useState("");
+  const [newMaxUses, setNewMaxUses] = useState("");
+  const [newExpires, setNewExpires] = useState("");
+
+  const fetchCoupons = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/coupons");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setCoupons(data.coupons);
+    } catch {
+      setCoupons([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchPlans = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/plans");
+      if (res.ok) {
+        const data = await res.json();
+        setPlans(data.plans.filter((p: PlanData) => !p.isFree));
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchCoupons(); fetchPlans(); }, [fetchCoupons, fetchPlans]);
+
+  async function createCoupon() {
+    if (!newCode || !newDiscount) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/coupons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create",
+          coupon: {
+            code: newCode,
+            discountPercent: newType === "percent" ? Number(newDiscount) : null,
+            discountAmount: newType === "amount" ? Number(newDiscount) : null,
+            planId: newPlanId || null,
+            maxUses: newMaxUses ? Number(newMaxUses) : null,
+            expiresAt: newExpires || null,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCreating(false);
+        setNewCode(""); setNewDiscount(""); setNewPlanId(""); setNewMaxUses(""); setNewExpires("");
+        fetchCoupons();
+      } else {
+        alert(data.error || "שגיאה");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleCoupon(id: number) {
+    await fetch("/api/admin/coupons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "toggle", couponId: id }),
+    });
+    fetchCoupons();
+  }
+
+  async function deleteCoupon(id: number, code: string) {
+    if (!confirm(`למחוק קופון "${code}"?`)) return;
+    await fetch("/api/admin/coupons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", couponId: id }),
+    });
+    fetchCoupons();
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-white font-bold">ניהול קופונים</h3>
+        <button
+          onClick={() => setCreating(!creating)}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          {creating ? "✕ סגור" : "➕ קופון חדש"}
+        </button>
+      </div>
+
+      {/* Create form */}
+      {creating && (
+        <Panel>
+          <h4 className="text-white font-bold mb-4">יצירת קופון</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">קוד קופון</label>
+              <input
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                placeholder="SUMMER50"
+              />
+            </div>
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">סוג הנחה</label>
+              <div className="flex gap-2">
+                <select
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value as "percent" | "amount")}
+                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                >
+                  <option value="percent">אחוז %</option>
+                  <option value="amount">סכום קבוע ₪</option>
+                </select>
+                <input
+                  type="number"
+                  value={newDiscount}
+                  onChange={(e) => setNewDiscount(e.target.value)}
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                  placeholder={newType === "percent" ? "20" : "50"}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">מוגבל לחבילה (ריק = הכל)</label>
+              <select
+                value={newPlanId}
+                onChange={(e) => setNewPlanId(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              >
+                <option value="">כל החבילות</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nameHe}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">מקסימום שימושים (ריק = ללא הגבלה)</label>
+              <input
+                type="number"
+                value={newMaxUses}
+                onChange={(e) => setNewMaxUses(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                placeholder="100"
+              />
+            </div>
+            <div>
+              <label className="text-gray-400 text-xs block mb-1">תוקף (ריק = ללא הגבלה)</label>
+              <input
+                type="date"
+                value={newExpires}
+                onChange={(e) => setNewExpires(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+              />
+            </div>
+          </div>
+          <button
+            onClick={createCoupon}
+            disabled={saving || !newCode || !newDiscount}
+            className="mt-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          >
+            {saving ? "⏳ יוצר..." : "✅ צור קופון"}
+          </button>
+        </Panel>
+      )}
+
+      {/* Coupons list */}
+      <Panel>
+        {loading ? (
+          <p className="text-gray-500 text-center py-8">⏳ טוען...</p>
+        ) : coupons.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">אין קופונים</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-right py-2 text-gray-400 font-medium">קוד</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">הנחה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">חבילה</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">שימושים</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">תוקף</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">סטטוס</th>
+                  <th className="text-center py-2 text-gray-400 font-medium">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coupons.map((c) => {
+                  const expired = c.expiresAt && new Date(c.expiresAt) < new Date();
+                  const maxed = c.maxUses !== null && c.currentUses >= c.maxUses;
+                  return (
+                    <tr key={c.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                      <td className="py-3">
+                        <code className="text-white font-mono font-bold bg-gray-800 px-2 py-0.5 rounded text-xs">{c.code}</code>
+                      </td>
+                      <td className="text-center py-3 text-white">
+                        {c.discountPercent ? `${c.discountPercent}%` : `₪${c.discountAmount}`}
+                      </td>
+                      <td className="text-center py-3 text-gray-400 text-xs">
+                        {c.planName || "הכל"}
+                      </td>
+                      <td className="text-center py-3 text-gray-300">
+                        {c.currentUses}{c.maxUses !== null ? ` / ${c.maxUses}` : " / ∞"}
+                      </td>
+                      <td className="text-center py-3 text-xs text-gray-400">
+                        {c.expiresAt ? formatDate(c.expiresAt) : "∞"}
+                      </td>
+                      <td className="text-center py-3">
+                        <span className={`text-xs font-medium ${
+                          !c.isActive ? "text-red-400" :
+                          expired ? "text-amber-400" :
+                          maxed ? "text-gray-500" :
+                          "text-emerald-400"
+                        }`}>
+                          {!c.isActive ? "❌ מושבת" :
+                           expired ? "⏰ פג תוקף" :
+                           maxed ? "📊 מיצה" :
+                           "✅ פעיל"}
+                        </span>
+                      </td>
+                      <td className="text-center py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => toggleCoupon(c.id)}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              c.isActive
+                                ? "bg-amber-600/20 text-amber-400 hover:bg-amber-600/40"
+                                : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40"
+                            }`}
+                          >
+                            {c.isActive ? "השבת" : "הפעל"}
+                          </button>
+                          <button
+                            onClick={() => deleteCoupon(c.id, c.code)}
+                            className="text-xs bg-red-600/20 text-red-400 hover:bg-red-600/40 px-2 py-1 rounded transition-colors"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // Tab: Campaigns
 // ═══════════════════════════════════════════════════════════
 
@@ -1238,6 +1974,8 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "predictions", label: "המלצות", icon: "🎯" },
   { id: "users", label: "משתמשים", icon: "👥" },
   { id: "subscriptions", label: "מנויים", icon: "💳" },
+  { id: "plans", label: "חבילות", icon: "📦" },
+  { id: "coupons", label: "קופונים", icon: "🎟️" },
   { id: "rejected", label: "נדחו", icon: "🚫" },
   { id: "campaigns", label: "קמפיינים", icon: "📢" },
 ];
@@ -1354,6 +2092,8 @@ export default function AdminDashboard() {
         {activeTab === "predictions" && <PredictionsTab data={data} />}
         {activeTab === "users" && <UsersTab />}
         {activeTab === "subscriptions" && <SubscriptionsTab />}
+        {activeTab === "plans" && <PlansTab />}
+        {activeTab === "coupons" && <CouponsTab />}
         {activeTab === "rejected" && <RejectedTab />}
         {activeTab === "campaigns" && <CampaignsTab data={data} />}
       </main>

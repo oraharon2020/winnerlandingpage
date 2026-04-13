@@ -1,41 +1,103 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-const PLANS = [
-  {
-    id: "weekly",
-    nameHe: "חבילת היכרות",
-    icon: "🔥",
-    price: 49,
-    periodHe: "/ שבוע",
-    durationHe: "7 ימים",
-  },
-  {
-    id: "monthly",
-    nameHe: "חבילה חודשית",
-    icon: "👑",
-    price: 199,
-    originalPrice: 399,
-    periodHe: "/ חודש",
-    durationHe: "30 ימים",
-    badge: "50% הנחה — מבצע השקה",
-    popular: true,
-  },
+interface PlanOption {
+  id: string;
+  nameHe: string;
+  icon: string;
+  price: number;
+  originalPrice: number | null;
+  periodHe: string;
+  durationDays: number;
+  badge: string | null;
+  isPopular: boolean;
+}
+
+// Fallback plans
+const FALLBACK_PLANS: PlanOption[] = [
+  { id: "weekly", nameHe: "חבילת היכרות", icon: "🔥", price: 49, originalPrice: null, periodHe: "/ שבוע", durationDays: 7, badge: null, isPopular: false },
+  { id: "monthly", nameHe: "חבילה חודשית", icon: "👑", price: 199, originalPrice: 399, periodHe: "/ חודש", durationDays: 30, badge: "50% הנחה — מבצע השקה", isPopular: true },
 ];
 
+interface CouponState {
+  valid: boolean;
+  code: string;
+  discountAmount: number;
+  finalPrice: number;
+  couponId: number;
+}
+
 export default function CheckoutPage() {
-  const [selectedPlan, setSelectedPlan] = useState("monthly");
+  const searchParams = useSearchParams();
+  const [plans, setPlans] = useState<PlanOption[]>(FALLBACK_PLANS);
+  const [selectedPlan, setSelectedPlan] = useState(searchParams.get("plan") || "monthly");
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
+  // Coupon state
+  const [couponInput, setCouponInput] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponState | null>(null);
+  const [couponError, setCouponError] = useState("");
+
   const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 
-  const plan = PLANS.find((p) => p.id === selectedPlan)!;
+  // Fetch plans from DB
+  useEffect(() => {
+    fetch("/api/plans")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.plans && data.plans.length > 0) {
+          const paidPlans = data.plans.filter((p: PlanOption & { isFree?: boolean }) => !p.isFree && p.price > 0);
+          if (paidPlans.length > 0) setPlans(paidPlans);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Reset coupon when plan changes
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponError("");
+  }, [selectedPlan]);
+
+  const plan = plans.find((p) => p.id === selectedPlan) || plans[0];
+  const finalPrice = appliedCoupon ? appliedCoupon.finalPrice : plan.price;
+
+  async function applyCoupon() {
+    if (!couponInput.trim()) return;
+    setCouponLoading(true);
+    setCouponError("");
+    setAppliedCoupon(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput, planId: selectedPlan }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setAppliedCoupon({
+          valid: true,
+          code: data.code,
+          discountAmount: data.discountAmount,
+          finalPrice: data.finalPrice,
+          couponId: data.couponId,
+        });
+      } else {
+        setCouponError(data.error || "קופון לא תקף");
+      }
+    } catch {
+      setCouponError("שגיאה בבדיקת קופון");
+    } finally {
+      setCouponLoading(false);
+    }
+  }
 
   if (!paypalClientId) {
     return (
@@ -79,8 +141,8 @@ export default function CheckoutPage() {
         </div>
 
         {/* Plan Selection */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          {PLANS.map((p) => (
+        <div className={`grid gap-4 mb-8 ${plans.length <= 2 ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-3"}`}>
+          {plans.map((p) => (
             <button
               key={p.id}
               onClick={() => setSelectedPlan(p.id)}
@@ -108,16 +170,60 @@ export default function CheckoutPage() {
           ))}
         </div>
 
+        {/* Coupon Code */}
+        <div className="mb-6">
+          <div className="flex gap-2">
+            <input
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              placeholder="קוד קופון"
+              className="flex-1 bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:border-[#f5a623] focus:outline-none transition"
+            />
+            <button
+              onClick={applyCoupon}
+              disabled={couponLoading || !couponInput.trim()}
+              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+            >
+              {couponLoading ? "⏳" : "החל"}
+            </button>
+          </div>
+          {couponError && (
+            <p className="text-red-400 text-xs mt-1.5">{couponError}</p>
+          )}
+          {appliedCoupon && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-emerald-400 text-xs">✅ קופון {appliedCoupon.code} — הנחה ₪{appliedCoupon.discountAmount}</span>
+              <button
+                onClick={() => { setAppliedCoupon(null); setCouponInput(""); }}
+                className="text-gray-500 hover:text-gray-300 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Order Summary */}
         <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-6">
           <h2 className="text-white font-bold mb-3">סיכום הזמנה</h2>
           <div className="flex justify-between text-sm text-gray-300 mb-2">
             <span>{plan.icon} {plan.nameHe}</span>
-            <span>{plan.durationHe}</span>
+            <span>{plan.durationDays} ימים</span>
           </div>
+          {appliedCoupon && (
+            <div className="flex justify-between text-sm text-emerald-400 mb-2">
+              <span>🎟️ קופון {appliedCoupon.code}</span>
+              <span>-₪{appliedCoupon.discountAmount}</span>
+            </div>
+          )}
           <div className="border-t border-gray-700 pt-2 mt-2 flex justify-between">
             <span className="text-white font-bold">סה&quot;כ</span>
-            <span className="text-[#f5a623] font-extrabold text-lg">₪{plan.price}</span>
+            <div className="text-left">
+              {appliedCoupon && (
+                <span className="text-gray-500 line-through text-sm ml-2">₪{plan.price}</span>
+              )}
+              <span className="text-[#f5a623] font-extrabold text-lg">₪{finalPrice}</span>
+            </div>
           </div>
         </div>
 
@@ -128,61 +234,94 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        <PayPalScriptProvider
-          options={{
-            clientId: paypalClientId,
-            currency: "ILS",
-            intent: "capture",
-          }}
-        >
-          <PayPalButtons
-            style={{
-              layout: "vertical",
-              color: "gold",
-              shape: "rect",
-              label: "pay",
-              height: 50,
+        {finalPrice > 0 ? (
+          <PayPalScriptProvider
+            options={{
+              clientId: paypalClientId,
+              currency: "ILS",
+              intent: "capture",
             }}
-            disabled={status === "processing"}
-            createOrder={async () => {
+          >
+            <PayPalButtons
+              key={`${selectedPlan}-${appliedCoupon?.code || "none"}`}
+              style={{
+                layout: "vertical",
+                color: "gold",
+                shape: "rect",
+                label: "pay",
+                height: 50,
+              }}
+              disabled={status === "processing"}
+              createOrder={async () => {
+                setStatus("processing");
+                setErrorMsg("");
+                const res = await fetch("/api/paypal/create-order", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    planId: selectedPlan,
+                    couponCode: appliedCoupon?.code || null,
+                  }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.orderId) {
+                  setStatus("error");
+                  setErrorMsg(data.error || "Failed to create order");
+                  throw new Error("Order creation failed");
+                }
+                return data.orderId;
+              }}
+              onApprove={async (data) => {
+                const res = await fetch("/api/paypal/capture-order", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId: data.orderID }),
+                });
+                const result = await res.json();
+                if (res.ok && result.ok) {
+                  setStatus("success");
+                } else {
+                  setStatus("error");
+                  setErrorMsg(result.error || "Payment capture failed");
+                }
+              }}
+              onError={() => {
+                setStatus("error");
+                setErrorMsg("שגיאה בתהליך התשלום");
+              }}
+              onCancel={() => {
+                setStatus("idle");
+              }}
+            />
+          </PayPalScriptProvider>
+        ) : (
+          <button
+            onClick={async () => {
               setStatus("processing");
-              setErrorMsg("");
+              // Free order with 100% coupon
               const res = await fetch("/api/paypal/create-order", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ planId: selectedPlan }),
+                body: JSON.stringify({
+                  planId: selectedPlan,
+                  couponCode: appliedCoupon?.code || null,
+                  freeOrder: true,
+                }),
               });
               const data = await res.json();
-              if (!res.ok || !data.orderId) {
-                setStatus("error");
-                setErrorMsg(data.error || "Failed to create order");
-                throw new Error("Order creation failed");
-              }
-              return data.orderId;
-            }}
-            onApprove={async (data) => {
-              const res = await fetch("/api/paypal/capture-order", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ orderId: data.orderID }),
-              });
-              const result = await res.json();
-              if (res.ok && result.ok) {
+              if (res.ok && data.ok) {
                 setStatus("success");
               } else {
                 setStatus("error");
-                setErrorMsg(result.error || "Payment capture failed");
+                setErrorMsg(data.error || "שגיאה");
               }
             }}
-            onError={() => {
-              setStatus("error");
-              setErrorMsg("שגיאה בתהליך התשלום");
-            }}
-            onCancel={() => {
-              setStatus("idle");
-            }}
-          />
-        </PayPalScriptProvider>
+            disabled={status === "processing"}
+            className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50"
+          >
+            {status === "processing" ? "⏳ מעבד..." : "🎁 הפעל מנוי חינם"}
+          </button>
+        )}
 
         <div className="text-center mt-6">
           <Link href="/" className="text-gray-500 hover:text-gray-300 text-sm transition">
