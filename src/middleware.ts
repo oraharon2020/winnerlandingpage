@@ -5,13 +5,29 @@ import { createServerClient } from "@supabase/ssr";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // If Supabase env vars are missing, skip auth checks
+  if (!supabaseUrl || !supabaseKey) {
+    // Still protect admin routes
+    if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
+      const token = request.cookies.get("admin_token")?.value;
+      const expected = process.env.ADMIN_PASSWORD || "winner2026";
+      if (!token || Buffer.from(token, "base64").toString() !== expected) {
+        return NextResponse.redirect(new URL("/admin/login", request.url));
+      }
+    }
+    return NextResponse.next();
+  }
+
   // Create a response we can modify
   let supabaseResponse = NextResponse.next({ request });
 
   // Create Supabase client with cookie handling
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {
