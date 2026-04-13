@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import DashboardNav from "@/components/dashboard/DashboardNav";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
-  title: "דשבורד | Winner Bot",
+  title: "דשבורד | הטיפ המנצח",
 };
 
 export default async function DashboardLayout({
