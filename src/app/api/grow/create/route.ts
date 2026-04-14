@@ -178,6 +178,7 @@ export async function POST(req: NextRequest) {
     }
     formData.append("cField1", customId);
     // For recurring, set chargeType=1 (Regular / active immediately)
+    // No paymentNum = unlimited charges until customer cancels
     if (isRecurring) {
       formData.append("chargeType", "1");
     }
