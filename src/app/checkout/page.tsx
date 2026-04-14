@@ -219,8 +219,10 @@ export default function CheckoutPage() {
         return;
       }
 
-      console.log("[Checkout] authCode:", data.authCode, "growPayment:", !!window.growPayment, "sdk_ready:", window.meshulam_sdk_ready);
-      if (data.authCode && window.growPayment && window.meshulam_sdk_ready) {
+      const isSandbox = (process.env.NEXT_PUBLIC_MESHULAM_ENV || "production").toLowerCase() === "sandbox";
+      console.log("[Checkout] authCode:", data.authCode, "growPayment:", !!window.growPayment, "sdk_ready:", window.meshulam_sdk_ready, "sandbox:", isSandbox);
+      
+      if (!isSandbox && data.authCode && window.growPayment && window.meshulam_sdk_ready) {
         console.log("[Checkout] Rendering Grow payment options with authCode:", data.authCode);
         window.growPayment.renderPaymentOptions(data.authCode);
       } else if (data.paymentUrl) {
