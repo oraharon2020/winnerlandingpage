@@ -52,8 +52,10 @@ export default function RootLayout({
                 s.onload = function() {
                   console.log('Meshulam SDK loaded');
                   if (window.growPayment) {
+                    var env = '${process.env.NEXT_PUBLIC_MESHULAM_ENV || "production"}'.toUpperCase();
+                    console.log('Meshulam SDK init with environment:', env);
                     window.growPayment.init({
-                      environment: "PRODUCTION",
+                      environment: env,
                       version: 1,
                       events: {
                         onSuccess: function(response) {
