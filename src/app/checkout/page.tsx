@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface PlanOption {
   id: string;
@@ -13,14 +14,14 @@ interface PlanOption {
   originalPrice: number | null;
   periodHe: string;
   durationDays: number;
+  features: string[];
   badge: string | null;
   isPopular: boolean;
 }
 
-// Fallback plans
 const FALLBACK_PLANS: PlanOption[] = [
-  { id: "weekly", nameHe: "חבילת היכרות", icon: "🔥", price: 49, originalPrice: null, periodHe: "/ שבוע", durationDays: 7, badge: null, isPopular: false },
-  { id: "monthly", nameHe: "חבילה חודשית", icon: "👑", price: 199, originalPrice: 399, periodHe: "/ חודש", durationDays: 30, badge: "50% הנחה — מבצע השקה", isPopular: true },
+  { id: "weekly", nameHe: "חבילת היכרות", icon: "🔥", price: 49, originalPrice: null, periodHe: "/ שבוע", durationDays: 7, features: ["כל הטיפים — ללא הגבלה", "דשבורד תוצאות מלא", "ניתוח מפורט", "30+ ליגות", "ביטול בכל רגע"], badge: null, isPopular: false },
+  { id: "monthly", nameHe: "חבילה חודשית", icon: "👑", price: 199, originalPrice: 399, periodHe: "/ חודש", durationDays: 30, features: ["כל הטיפים — ללא הגבלה", "דשבורד תוצאות מלא", "ניתוח מפורט", "30+ ליגות", "התראות ישירות כל בוקר", "ביטול בכל רגע"], badge: "50% הנחה — מבצע השקה", isPopular: true },
 ];
 
 interface CouponState {
@@ -33,11 +34,21 @@ interface CouponState {
 
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const supabase = createClient();
+
   const [plans, setPlans] = useState<PlanOption[]>(FALLBACK_PLANS);
   const [selectedPlan, setSelectedPlan] = useState(searchParams.get("plan") || "monthly");
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const router = useRouter();
+
+  // Auth state
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // null = loading
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authReady, setAuthReady] = useState(false); // true when user is logged in or just signed up
 
   // Coupon state
   const [couponInput, setCouponInput] = useState("");
@@ -46,6 +57,20 @@ export default function CheckoutPage() {
   const [couponError, setCouponError] = useState("");
 
   const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+
+  // Check if user is already logged in
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setIsLoggedIn(true);
+        setAuthReady(true);
+        setEmail(user.email || "");
+      } else {
+        setIsLoggedIn(false);
+        setAuthReady(false);
+      }
+    });
+  }, [supabase.auth]);
 
   // Fetch plans from DB
   useEffect(() => {
@@ -68,6 +93,48 @@ export default function CheckoutPage() {
 
   const plan = plans.find((p) => p.id === selectedPlan) || plans[0];
   const finalPrice = appliedCoupon ? appliedCoupon.finalPrice : plan.price;
+
+  // Inline signup
+  const handleSignup = useCallback(async (): Promise<boolean> => {
+    if (authReady) return true; // Already logged in
+
+    setAuthError("");
+    if (!email || !password) {
+      setAuthError("נא למלא אימייל וסיסמה");
+      return false;
+    }
+    if (password.length < 6) {
+      setAuthError("סיסמה חייבת להכיל לפחות 6 תווים");
+      return false;
+    }
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName } },
+    });
+
+    if (error) {
+      // If user already exists, try to log in
+      if (error.message?.includes("already registered") || error.message?.includes("already exists")) {
+        const { error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (loginError) {
+          setAuthError("משתמש קיים — סיסמה שגויה");
+          return false;
+        }
+      } else {
+        setAuthError(error.message);
+        return false;
+      }
+    }
+
+    setAuthReady(true);
+    setIsLoggedIn(true);
+    return true;
+  }, [authReady, email, password, fullName, supabase.auth]);
 
   async function applyCoupon() {
     if (!couponInput.trim()) return;
@@ -132,16 +199,31 @@ export default function CheckoutPage() {
     );
   }
 
+  // Loading auth state
+  if (isLoggedIn === null) {
+    return (
+      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center">
+        <div className="text-gray-500">⏳ טוען...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center px-4 py-12">
       <div className="max-w-lg w-full">
+        {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">בחר חבילה ושלם</h1>
-          <p className="text-gray-400">תשלום מאובטח דרך PayPal</p>
+          <Link href="/" className="text-2xl font-bold text-white">
+            🏆 הטיפ <span className="text-[#f5a623]">המנצח</span>
+          </Link>
+          <h1 className="text-2xl font-bold text-white mt-4 mb-1">
+            {isLoggedIn ? "בחר חבילה ושלם" : "הרשמה + מנוי — שלב אחד"}
+          </h1>
+          <p className="text-gray-400 text-sm">תשלום מאובטח דרך PayPal • ביטול בכל רגע</p>
         </div>
 
-        {/* Plan Selection */}
-        <div className={`grid gap-4 mb-8 ${plans.length <= 2 ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-3"}`}>
+        {/* ── Step 1: Plan Selection ── */}
+        <div className={`grid gap-3 mb-6 ${plans.length <= 2 ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-3"}`}>
           {plans.map((p) => (
             <button
               key={p.id}
@@ -170,8 +252,66 @@ export default function CheckoutPage() {
           ))}
         </div>
 
-        {/* Coupon Code */}
-        <div className="mb-6">
+        {/* ── Plan Features ── */}
+        {plan.features.length > 0 && (
+          <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-4 mb-6">
+            <div className="grid grid-cols-2 gap-2">
+              {plan.features.map((f) => (
+                <div key={f} className="flex items-start gap-1.5 text-xs text-gray-300">
+                  <span className="text-[#10b981] mt-px">✓</span>{f}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Account Details (if not logged in) ── */}
+        {!isLoggedIn && (
+          <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-6 h-6 rounded-full bg-[#f5a623] text-[#0a0e17] text-xs font-bold flex items-center justify-center">1</div>
+              <h2 className="text-white font-bold">פרטי חשבון</h2>
+              {authReady && <span className="text-emerald-400 text-xs mr-auto">✅ מוכן</span>}
+            </div>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => { setFullName(e.target.value); setAuthError(""); }}
+                placeholder="שם מלא"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+              />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setAuthError(""); setAuthReady(false); }}
+                placeholder="אימייל"
+                dir="ltr"
+                required
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setAuthError(""); setAuthReady(false); }}
+                placeholder="סיסמה (לפחות 6 תווים)"
+                dir="ltr"
+                required
+                minLength={6}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+              />
+              {authError && (
+                <p className="text-red-400 text-xs text-center bg-red-400/10 rounded-lg py-2">{authError}</p>
+              )}
+              <p className="text-gray-600 text-[11px] text-center">
+                כבר יש לך חשבון? הכנס את הפרטים שלך ונחבר אותך אוטומטית
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Coupon Code ── */}
+        <div className="mb-5">
           <div className="flex gap-2">
             <input
               value={couponInput}
@@ -187,25 +327,25 @@ export default function CheckoutPage() {
               {couponLoading ? "⏳" : "החל"}
             </button>
           </div>
-          {couponError && (
-            <p className="text-red-400 text-xs mt-1.5">{couponError}</p>
-          )}
+          {couponError && <p className="text-red-400 text-xs mt-1.5">{couponError}</p>}
           {appliedCoupon && (
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-emerald-400 text-xs">✅ קופון {appliedCoupon.code} — הנחה ₪{appliedCoupon.discountAmount}</span>
-              <button
-                onClick={() => { setAppliedCoupon(null); setCouponInput(""); }}
-                className="text-gray-500 hover:text-gray-300 text-xs"
-              >
-                ✕
-              </button>
+              <button onClick={() => { setAppliedCoupon(null); setCouponInput(""); }} className="text-gray-500 hover:text-gray-300 text-xs">✕</button>
             </div>
           )}
         </div>
 
-        {/* Order Summary */}
+        {/* ── Order Summary ── */}
         <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-6">
-          <h2 className="text-white font-bold mb-3">סיכום הזמנה</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
+              isLoggedIn ? "bg-[#f5a623] text-[#0a0e17]" : "bg-gray-600 text-gray-300"
+            }`}>
+              {isLoggedIn ? "1" : "2"}
+            </div>
+            <h2 className="text-white font-bold">סיכום ותשלום</h2>
+          </div>
           <div className="flex justify-between text-sm text-gray-300 mb-2">
             <span>{plan.icon} {plan.nameHe}</span>
             <span>{plan.durationDays} ימים</span>
@@ -227,7 +367,7 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* PayPal Buttons */}
+        {/* ── Payment ── */}
         {status === "error" && (
           <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-3 mb-4 text-center text-red-400 text-sm">
             {errorMsg || "שגיאה בתשלום. נסה שוב."}
@@ -243,7 +383,7 @@ export default function CheckoutPage() {
             }}
           >
             <PayPalButtons
-              key={`${selectedPlan}-${appliedCoupon?.code || "none"}`}
+              key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
               style={{
                 layout: "vertical",
                 color: "gold",
@@ -255,6 +395,17 @@ export default function CheckoutPage() {
               createOrder={async () => {
                 setStatus("processing");
                 setErrorMsg("");
+
+                // Step 1: Create account if needed
+                if (!authReady) {
+                  const ok = await handleSignup();
+                  if (!ok) {
+                    setStatus("idle");
+                    throw new Error("Signup failed");
+                  }
+                }
+
+                // Step 2: Create PayPal order
                 const res = await fetch("/api/paypal/create-order", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -298,7 +449,10 @@ export default function CheckoutPage() {
           <button
             onClick={async () => {
               setStatus("processing");
-              // Free order with 100% coupon
+              if (!authReady) {
+                const ok = await handleSignup();
+                if (!ok) { setStatus("idle"); return; }
+              }
               const res = await fetch("/api/paypal/create-order", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
