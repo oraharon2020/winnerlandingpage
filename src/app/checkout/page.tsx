@@ -212,7 +212,8 @@ export default function CheckoutPage() {
         return;
       }
 
-      if (data.authCode && window.growPayment) {
+      if (data.authCode && window.growPayment && window.meshulam_sdk_ready) {
+        console.log('Rendering Grow payment options with authCode:', data.authCode);
         window.growPayment.renderPaymentOptions(data.authCode);
       } else if (data.paymentUrl) {
         window.location.href = data.paymentUrl;

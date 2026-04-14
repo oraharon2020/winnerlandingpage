@@ -38,6 +38,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
           rel="stylesheet"
         />
+        {/* Apple Pay SDK */}
+        <script type="text/javascript" src="https://meshulam.co.il/_media/js/apple_pay_sdk/sdk.min.js" async></script>
         {/* Meshulam/Grow Payment SDK */}
         <script
           dangerouslySetInnerHTML={{
@@ -48,26 +50,36 @@ export default function RootLayout({
                 s.async = true;
                 s.src = 'https://cdn.meshulam.co.il/sdk/gs.min.js';
                 s.onload = function() {
+                  console.log('Meshulam SDK loaded');
                   if (window.growPayment) {
                     window.growPayment.init({
                       environment: "PRODUCTION",
                       version: 1,
                       events: {
                         onSuccess: function(response) {
+                          console.log('Meshulam onSuccess:', response);
                           window.dispatchEvent(new CustomEvent('meshulam-success', { detail: response }));
                         },
                         onFailure: function(response) {
+                          console.log('Meshulam onFailure:', response);
                           window.dispatchEvent(new CustomEvent('meshulam-failure', { detail: response }));
                         },
                         onError: function(response) {
+                          console.log('Meshulam onError:', response);
                           window.dispatchEvent(new CustomEvent('meshulam-error', { detail: response }));
                         },
+                        onWalletChange: function(state) {
+                          console.log('Meshulam onWalletChange:', state);
+                          window.dispatchEvent(new CustomEvent('meshulam-wallet-change', { detail: state }));
+                        },
                         onClose: function() {
+                          console.log('Meshulam wallet closed');
                           window.dispatchEvent(new CustomEvent('meshulam-close'));
                         }
                       }
                     });
                     window.meshulam_sdk_ready = true;
+                    console.log('Meshulam SDK ready');
                   }
                 };
                 var x = document.getElementsByTagName('script')[0];
