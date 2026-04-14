@@ -384,7 +384,7 @@ export default function CheckoutPage() {
               currency: "ILS",
               intent: "capture",
               locale: "he_IL",
-              enableFunding: "card",
+              disableFunding: "card,credit",
             }}
           >
             <PayPalButtons
@@ -393,7 +393,7 @@ export default function CheckoutPage() {
                 layout: "vertical",
                 color: "gold",
                 shape: "rect",
-                label: "pay",
+                label: "paypal",
                 height: 50,
                 tagline: false,
               }}
@@ -431,6 +431,9 @@ export default function CheckoutPage() {
               onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
               onCancel={() => { setStatus("idle"); }}
             />
+            <p className="text-center text-gray-500 text-xs mt-2">
+              💳 אפשר לשלם גם עם כרטיס אשראי דרך PayPal — בלי צורך בחשבון
+            </p>
           </PayPalScriptProvider>
         ) : (
           <button
