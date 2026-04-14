@@ -212,21 +212,39 @@ export async function POST(req: NextRequest) {
       const processId = result.data?.processId;
       const processToken = result.data?.processToken;
 
-      const infoFormData = new FormData();
-      infoFormData.append("pageCode", pageCode);
-      infoFormData.append("userId", meshulamUserId);
-      infoFormData.append("processId", processId.toString());
-      infoFormData.append("processToken", processToken);
+      // For recurring, use the URL directly from createPaymentProcess
+      // For regular payments, try getPaymentProcessInfo for a potentially better URL
+      let paymentUrl = result.data?.url;
 
-      const infoResponse = await fetch(`${meshulamApiUrl}/getPaymentProcessInfo`, {
-        method: "POST",
-        body: infoFormData,
-      });
-      const infoResult = await infoResponse.json();
+      if (!isRecurring) {
+        try {
+          const infoFormData = new FormData();
+          infoFormData.append("pageCode", pageCode);
+          infoFormData.append("userId", meshulamUserId);
+          infoFormData.append("processId", processId.toString());
+          infoFormData.append("processToken", processToken);
 
-      const isSandbox = meshulamApiUrl.includes("sandbox");
-      const basePaymentUrl = isSandbox ? "https://sandbox.meshulam.co.il" : "https://secure.meshulam.co.il";
-      const paymentUrl = infoResult.data?.url || result.data?.url || `${basePaymentUrl}/s/${pageCode}/${processId}`;
+          const infoResponse = await fetch(`${meshulamApiUrl}/getPaymentProcessInfo`, {
+            method: "POST",
+            body: infoFormData,
+          });
+          const infoResult = await infoResponse.json();
+          console.log("[Grow Create] getPaymentProcessInfo:", JSON.stringify(infoResult));
+          if (infoResult.data?.url) {
+            paymentUrl = infoResult.data.url;
+          }
+        } catch (e) {
+          console.warn("[Grow Create] getPaymentProcessInfo failed, using original URL:", e);
+        }
+      }
+
+      if (!paymentUrl) {
+        const isSandbox = meshulamApiUrl.includes("sandbox");
+        const basePaymentUrl = isSandbox ? "https://sandbox.meshulam.co.il" : "https://secure.meshulam.co.il";
+        paymentUrl = `${basePaymentUrl}/s/${pageCode}/${processId}`;
+      }
+
+      console.log("[Grow Create] Redirecting to paymentUrl:", paymentUrl);
 
       return NextResponse.json({
         success: true,
