@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PayPalScriptProvider,
   PayPalButtons,
+  FUNDING,
 } from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -384,17 +385,17 @@ export default function CheckoutPage() {
               currency: "ILS",
               intent: "capture",
               locale: "he_IL",
-              disableFunding: "card,credit",
+              enableFunding: "card",
             }}
           >
             <PayPalButtons
               key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+              fundingSource={FUNDING.CARD}
               style={{
                 layout: "vertical",
-                color: "gold",
                 shape: "rect",
-                label: "paypal",
-                height: 50,
+                label: "pay",
+                height: 55,
                 tagline: false,
               }}
               disabled={status === "processing"}
@@ -431,8 +432,8 @@ export default function CheckoutPage() {
               onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
               onCancel={() => { setStatus("idle"); }}
             />
-            <p className="text-center text-gray-500 text-xs mt-2">
-              💳 אפשר לשלם גם עם כרטיס אשראי דרך PayPal — בלי צורך בחשבון
+            <p className="text-center text-gray-400 text-xs mt-3">
+              🔒 תשלום מאובטח • כל סוגי הכרטיסים
             </p>
           </PayPalScriptProvider>
         ) : (
