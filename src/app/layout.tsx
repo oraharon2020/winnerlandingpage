@@ -38,6 +38,44 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
           rel="stylesheet"
         />
+        {/* Meshulam/Grow Payment SDK */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                var s = document.createElement('script');
+                s.type = 'text/javascript';
+                s.async = true;
+                s.src = 'https://cdn.meshulam.co.il/sdk/gs.min.js';
+                s.onload = function() {
+                  if (window.growPayment) {
+                    window.growPayment.init({
+                      environment: "PRODUCTION",
+                      version: 1,
+                      events: {
+                        onSuccess: function(response) {
+                          window.dispatchEvent(new CustomEvent('meshulam-success', { detail: response }));
+                        },
+                        onFailure: function(response) {
+                          window.dispatchEvent(new CustomEvent('meshulam-failure', { detail: response }));
+                        },
+                        onError: function(response) {
+                          window.dispatchEvent(new CustomEvent('meshulam-error', { detail: response }));
+                        },
+                        onClose: function() {
+                          window.dispatchEvent(new CustomEvent('meshulam-close'));
+                        }
+                      }
+                    });
+                    window.meshulam_sdk_ready = true;
+                  }
+                };
+                var x = document.getElementsByTagName('script')[0];
+                x.parentNode.insertBefore(s, x);
+              })();
+            `
+          }}
+        />
       </head>
       <body className="antialiased">
         <GoogleAds />

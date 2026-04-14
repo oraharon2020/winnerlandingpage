@@ -1,11 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import {
-  PayPalScriptProvider,
-  PayPalButtons,
-  FUNDING,
-} from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -60,7 +55,8 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<CouponState | null>(null);
   const [couponError, setCouponError] = useState("");
 
-  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+  // Phone for payment
+  const [phone, setPhone] = useState("");
 
   // Check if user is already logged in
   useEffect(() => {
@@ -98,9 +94,36 @@ export default function CheckoutPage() {
   const plan = plans.find((p) => p.id === selectedPlan) || plans[0];
   const finalPrice = appliedCoupon ? appliedCoupon.finalPrice : plan.price;
 
+  // Check for success/cancelled redirects from Grow
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    if (payment === "success") {
+      setStatus("success");
+    }
+  }, [searchParams]);
+
+  // Listen for Grow SDK custom events
+  useEffect(() => {
+    const handleSuccess = () => setStatus("success");
+    const handleFailure = () => { setStatus("error"); setErrorMsg("התשלום נכשל, נסה שוב"); };
+    const handleError = () => { setStatus("error"); setErrorMsg("שגיאה בסליקה, נסה שוב"); };
+    const handleClose = () => { if (status === "processing") setStatus("idle"); };
+
+    window.addEventListener("meshulam-success", handleSuccess);
+    window.addEventListener("meshulam-failure", handleFailure);
+    window.addEventListener("meshulam-error", handleError);
+    window.addEventListener("meshulam-close", handleClose);
+    return () => {
+      window.removeEventListener("meshulam-success", handleSuccess);
+      window.removeEventListener("meshulam-failure", handleFailure);
+      window.removeEventListener("meshulam-error", handleError);
+      window.removeEventListener("meshulam-close", handleClose);
+    };
+  }, [status]);
+
   // Inline signup
   const handleSignup = useCallback(async (): Promise<boolean> => {
-    if (authReady) return true; // Already logged in
+    if (authReady) return true;
 
     setAuthError("");
     if (!email || !password) {
@@ -119,7 +142,6 @@ export default function CheckoutPage() {
     });
 
     if (error) {
-      // If user already exists, try to log in
       if (error.message?.includes("already registered") || error.message?.includes("already exists")) {
         const { error: loginError } = await supabase.auth.signInWithPassword({
           email,
@@ -139,6 +161,63 @@ export default function CheckoutPage() {
     setIsLoggedIn(true);
     return true;
   }, [authReady, email, password, fullName, supabase.auth]);
+
+  // Handle Grow payment
+  const handleGrowPayment = useCallback(async () => {
+    setStatus("processing");
+    setErrorMsg("");
+
+    if (!authReady) {
+      const ok = await handleSignup();
+      if (!ok) { setStatus("idle"); return; }
+    }
+
+    if (!phone.trim()) {
+      setErrorMsg("נא למלא מספר טלפון");
+      setStatus("idle");
+      return;
+    }
+
+    const customerName = fullName.trim() || email.split("@")[0] || "לקוח";
+
+    try {
+      const res = await fetch("/api/grow/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId: selectedPlan,
+          couponCode: appliedCoupon?.code || null,
+          customerName,
+          customerPhone: phone,
+          customerEmail: email,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setStatus("error");
+        setErrorMsg(data.error || "שגיאה ביצירת תשלום");
+        return;
+      }
+
+      if (data.freeTransaction) {
+        setStatus("success");
+        return;
+      }
+
+      if (data.authCode && window.growPayment) {
+        window.growPayment.renderPaymentOptions(data.authCode);
+      } else if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        setStatus("error");
+        setErrorMsg("שגיאה: לא התקבל לינק תשלום");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("שגיאת רשת, נסה שוב");
+    }
+  }, [authReady, handleSignup, phone, fullName, email, selectedPlan, appliedCoupon]);
 
   async function applyCoupon() {
     if (!couponInput.trim()) return;
@@ -168,19 +247,6 @@ export default function CheckoutPage() {
     } finally {
       setCouponLoading(false);
     }
-  }
-
-  if (!paypalClientId) {
-    return (
-      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-gray-400 text-lg">מערכת התשלום בהקמה</p>
-          <Link href="/" className="text-[#f5a623] hover:underline mt-4 inline-block">
-            ← חזרה לעמוד הראשי
-          </Link>
-        </div>
-      </div>
-    );
   }
 
   if (status === "success") {
@@ -223,7 +289,7 @@ export default function CheckoutPage() {
           <h1 className="text-2xl font-bold text-white mt-4 mb-1">
             {isLoggedIn ? "בחר חבילה ושלם" : "הרשמה + מנוי — שלב אחד"}
           </h1>
-          <p className="text-gray-400 text-sm">תשלום מאובטח דרך PayPal • ביטול בכל רגע</p>
+          <p className="text-gray-400 text-sm">תשלום מאובטח • כל סוגי הכרטיסים • ביט • Apple Pay</p>
         </div>
 
         {/* ── Step 1: Plan Selection ── */}
@@ -371,6 +437,19 @@ export default function CheckoutPage() {
           </div>
         </div>
 
+        {/* ── Phone for payment ── */}
+        <div className="mb-5">
+          <label className="block text-gray-400 text-xs mb-1.5">מספר טלפון (לסליקה)</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="05x-xxx-xxxx"
+            dir="ltr"
+            className="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:border-[#f5a623] focus:outline-none transition"
+          />
+        </div>
+
         {/* ── Payment ── */}
         {status === "error" && (
           <div className="bg-red-900/30 border border-red-700/50 rounded-xl p-3 mb-4 text-center text-red-400 text-sm">
@@ -379,94 +458,29 @@ export default function CheckoutPage() {
         )}
 
         {finalPrice > 0 ? (
-          <PayPalScriptProvider
-            options={{
-              clientId: paypalClientId,
-              currency: "ILS",
-              intent: "capture",
-              locale: "he_IL",
-              enableFunding: "card",
-            }}
+          <button
+            onClick={handleGrowPayment}
+            disabled={status === "processing"}
+            className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            <PayPalButtons
-              key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
-              fundingSource={FUNDING.CARD}
-              style={{
-                layout: "vertical",
-                shape: "rect",
-                label: "pay",
-                height: 55,
-                tagline: false,
-              }}
-              disabled={status === "processing"}
-              createOrder={async () => {
-                setStatus("processing");
-                setErrorMsg("");
-                if (!authReady) {
-                  const ok = await handleSignup();
-                  if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
-                }
-                const res = await fetch("/api/paypal/create-order", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
-                });
-                const data = await res.json();
-                if (!res.ok || !data.orderId) {
-                  setStatus("error");
-                  setErrorMsg(data.error || "Failed to create order");
-                  throw new Error("Order creation failed");
-                }
-                return data.orderId;
-              }}
-              onApprove={async (data) => {
-                const res = await fetch("/api/paypal/capture-order", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId: data.orderID }),
-                });
-                const result = await res.json();
-                if (res.ok && result.ok) { setStatus("success"); }
-                else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
-              }}
-              onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
-              onCancel={() => { setStatus("idle"); }}
-            />
-            <p className="text-center text-gray-400 text-xs mt-3">
-              🔒 תשלום מאובטח • כל סוגי הכרטיסים
-            </p>
-          </PayPalScriptProvider>
+            {status === "processing" ? "⏳ מעבד..." : `💳 שלם ₪${finalPrice}`}
+          </button>
         ) : (
           <button
-            onClick={async () => {
-              setStatus("processing");
-              if (!authReady) {
-                const ok = await handleSignup();
-                if (!ok) { setStatus("idle"); return; }
-              }
-              const res = await fetch("/api/paypal/create-order", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  planId: selectedPlan,
-                  couponCode: appliedCoupon?.code || null,
-                  freeOrder: true,
-                }),
-              });
-              const data = await res.json();
-              if (res.ok && data.ok) {
-                setStatus("success");
-              } else {
-                setStatus("error");
-                setErrorMsg(data.error || "שגיאה");
-              }
-            }}
+            onClick={handleGrowPayment}
             disabled={status === "processing"}
             className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50"
           >
             {status === "processing" ? "⏳ מעבד..." : "🎁 הפעל מנוי חינם"}
           </button>
         )}
+
+        <p className="text-center text-gray-400 text-xs mt-3">
+          🔒 תשלום מאובטח • כרטיס אשראי • ביט • Apple Pay • Google Pay
+        </p>
+
+        {/* Grow SDK renders payment widget here */}
+        <div id="meshulam-payment" className="mt-4" />
 
         <div className="text-center mt-6">
           <Link href="/" className="text-gray-500 hover:text-gray-300 text-sm transition">
@@ -486,7 +500,7 @@ export default function CheckoutPage() {
           </div>
           <div className="flex items-center gap-1.5 bg-gray-800/60 px-3 py-1.5 rounded-full">
             <span className="text-[11px]">🛡️</span>
-            <span className="text-gray-300 text-[11px]">הגנת קונים PayPal</span>
+            <span className="text-gray-300 text-[11px]">סליקה מאובטחת Grow</span>
           </div>
         </div>
 
@@ -497,7 +511,7 @@ export default function CheckoutPage() {
           <span className="text-xs text-gray-500 font-medium">Visa</span>
           <span className="text-xs text-gray-500 font-medium">Mastercard</span>
           <span className="text-xs text-gray-500 font-medium">Amex</span>
-          <span className="text-xs text-gray-500 font-medium">PayPal</span>
+          <span className="text-xs text-gray-500 font-medium">Bit</span>
         </div>
       </div>
     </div>
