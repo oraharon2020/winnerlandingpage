@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       recurringDebitId,
     } = data;
 
-    // cField1 format: "planId:supabaseUid:durationDays:couponId:recurring"
+    // cField1 format: "planId_supabaseUid_durationDays_couponId_recurring"
     const customId = cField1;
     const paymentStatus = rawData.status || status;
     const isRecurringPayment = !!directDebitId;
@@ -159,11 +159,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 1 });
     }
 
-    const parts = customId.split(":");
+    // Support both old ":" and new "_" separator
+    // Supabase UIDs contain hyphens but not colons or underscores
+    // New format uses "_" — split smartly
+    const sep = customId.includes("_") ? "_" : ":";
+    const parts = customId.split(sep);
+    // For underscore format: planId_uuid-with-hyphens_days_couponId_recurring
+    // UUID is in parts[1] through parts[1] (no underscores in UUID)
     const planId = parts[0] || "";
     const supabaseUid = parts[1] || "";
     const durationDays = parseInt(parts[2]) || 30;
-    const couponId = parts[3] ? parseInt(parts[3]) : null;
+    const couponId = parts[3] && parts[3] !== '0' ? parseInt(parts[3]) : null;
     const isRecurringFlag = parts[4] === "1";
 
     const isSuccess = paymentStatus === "1" || String(paymentStatus) === "1";

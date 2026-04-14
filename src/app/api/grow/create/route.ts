@@ -157,8 +157,9 @@ export async function POST(req: NextRequest) {
     // Determine if this is a recurring (monthly) plan
     const isRecurring = durationDays >= 28 && durationDays <= 31 && !!MESHULAM_RECURRING_PAGE_CODE;
     const pageCode = isRecurring ? MESHULAM_RECURRING_PAGE_CODE : MESHULAM_PAGE_CODE;
-    // cField1 format: "planId:supabaseUid:durationDays:couponId:recurring"
-    const customId = `${planId}:${user.id}:${durationDays}:${couponId || ''}:${isRecurring ? '1' : '0'}`;
+    // cField1 format: "planId_supabaseUid_durationDays_couponId_recurring"
+    // No special characters allowed per Grow docs
+    const customId = `${planId}_${user.id}_${durationDays}_${couponId || '0'}_${isRecurring ? '1' : '0'}`;
 
     const meshulamUserId = isRecurring ? MESHULAM_RECURRING_USER_ID : MESHULAM_USER_ID;
     const meshulamApiUrl = isRecurring ? MESHULAM_RECURRING_API_URL : MESHULAM_API_URL;
@@ -167,7 +168,8 @@ export async function POST(req: NextRequest) {
     formData.append("pageCode", pageCode);
     formData.append("userId", meshulamUserId);
     formData.append("sum", planPrice.toString());
-    formData.append("description", `הטיפ המנצח — ${planName}${isRecurring ? ' (הוראת קבע חודשית)' : ''}`);
+    // No special characters allowed per Grow docs (no em-dash, parentheses, etc.)
+    formData.append("description", `הטיפ המנצח ${planName}`);
     formData.append("successUrl", `${appUrl}/checkout?payment=success`);
     formData.append("cancelUrl", `${appUrl}/checkout?payment=cancelled`);
     formData.append("notifyUrl", `${appUrl}/api/grow/webhook`);
@@ -177,20 +179,25 @@ export async function POST(req: NextRequest) {
       formData.append("pageField[email]", customerEmail);
     }
     formData.append("cField1", customId);
-    // For recurring, set chargeType=1 (Regular / active immediately)
-    // No paymentNum = unlimited charges until customer cancels
+    // For recurring: paymentNum is required for recurring (2-12), sum = monthly amount
     if (isRecurring) {
-      formData.append("chargeType", "1");
+      formData.append("paymentNum", "12");
     }
 
     console.log("[Grow Create] Calling createPaymentProcess:", {
       apiUrl: meshulamApiUrl,
-      pageCodeSet: !!pageCode,
-      userIdSet: !!meshulamUserId,
+      pageCode,
+      userId: meshulamUserId,
       sum: planPrice,
-      description: `הטיפ המנצח — ${planName}`,
+      description: `הטיפ המנצח ${planName}`,
+      successUrl: `${appUrl}/checkout?payment=success`,
+      cancelUrl: `${appUrl}/checkout?payment=cancelled`,
       notifyUrl: `${appUrl}/api/grow/webhook`,
+      fullName: customerName,
+      phone,
+      cField1: customId,
       isRecurring,
+      paymentNum: isRecurring ? "12" : undefined,
     });
 
     const response = await fetch(`${meshulamApiUrl}/createPaymentProcess`, {
