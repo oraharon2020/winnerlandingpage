@@ -144,11 +144,21 @@ export async function POST(req: NextRequest) {
     }
     formData.append("cField1", customId);
 
+    console.log("[Grow Create] Calling createPaymentProcess:", {
+      apiUrl: MESHULAM_API_URL,
+      pageCodeSet: !!MESHULAM_PAGE_CODE,
+      userIdSet: !!MESHULAM_USER_ID,
+      sum: planPrice,
+      description: `הטיפ המנצח — ${planName}`,
+      notifyUrl: `${appUrl}/api/grow/webhook`,
+    });
+
     const response = await fetch(`${MESHULAM_API_URL}/createPaymentProcess`, {
       method: "POST",
       body: formData,
     });
     const result = await response.json();
+    console.log("[Grow Create] Meshulam response:", JSON.stringify(result));
 
     if (result.status === 1 || result.status === "1") {
       const processId = result.data?.processId;
@@ -178,13 +188,14 @@ export async function POST(req: NextRequest) {
         authCode: result.data?.authCode,
       });
     } else {
+      console.error("[Grow Create] Payment creation failed:", JSON.stringify(result));
       return NextResponse.json(
-        { error: "Payment creation failed", details: result.err?.message || "Unknown error" },
+        { error: "Payment creation failed", details: result.err?.message || result.message || JSON.stringify(result) },
         { status: 400 }
       );
     }
   } catch (error) {
-    console.error("Grow create payment error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[Grow Create] Exception:", error);
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

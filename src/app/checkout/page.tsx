@@ -203,7 +203,7 @@ export default function CheckoutPage() {
 
       if (!res.ok || !data.success) {
         setStatus("error");
-        setErrorMsg(data.error || "שגיאה ביצירת תשלום");
+        setErrorMsg(data.details || data.error || "שגיאה ביצירת תשלום");
         return;
       }
 
