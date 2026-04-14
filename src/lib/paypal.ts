@@ -8,7 +8,7 @@ async function getAccessToken(): Promise<string> {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const secret = process.env.PAYPAL_SECRET;
   if (!clientId || !secret) {
-    throw new Error("Missing PAYPAL_CLIENT_ID or PAYPAL_SECRET");
+    throw new Error(`Missing PayPal credentials. PAYPAL_CLIENT_ID: ${clientId ? "set" : "MISSING"}, PAYPAL_SECRET: ${secret ? "set" : "MISSING"}, PAYPAL_MODE: ${process.env.PAYPAL_MODE || "NOT SET"}`);
   }
 
   const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");

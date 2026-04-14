@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PayPalScriptProvider,
   PayPalButtons,
-  FUNDING,
 } from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -388,104 +387,50 @@ export default function CheckoutPage() {
               enableFunding: "card",
             }}
           >
-            <div className="space-y-3">
-              {/* Credit / Debit Card Button — first and prominent */}
-              <PayPalButtons
-                key={`card-${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
-                fundingSource={FUNDING.CARD}
-                style={{
-                  layout: "vertical",
-                  shape: "rect",
-                  label: "pay",
-                  height: 50,
-                }}
-                disabled={status === "processing"}
-                createOrder={async () => {
-                  setStatus("processing");
-                  setErrorMsg("");
-                  if (!authReady) {
-                    const ok = await handleSignup();
-                    if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
-                  }
-                  const res = await fetch("/api/paypal/create-order", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok || !data.orderId) {
-                    setStatus("error");
-                    setErrorMsg(data.error || "Failed to create order");
-                    throw new Error("Order creation failed");
-                  }
-                  return data.orderId;
-                }}
-                onApprove={async (data) => {
-                  const res = await fetch("/api/paypal/capture-order", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ orderId: data.orderID }),
-                  });
-                  const result = await res.json();
-                  if (res.ok && result.ok) { setStatus("success"); }
-                  else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
-                }}
-                onError={() => { setStatus("error"); setErrorMsg("שגיאה בתשלום בכרטיס"); }}
-                onCancel={() => { setStatus("idle"); }}
-              />
-
-              <div className="flex items-center gap-3 text-gray-600 text-xs">
-                <div className="flex-1 border-t border-gray-700" />
-                <span>או</span>
-                <div className="flex-1 border-t border-gray-700" />
-              </div>
-
-              {/* PayPal Button */}
-              <PayPalButtons
-                key={`paypal-${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
-                fundingSource={FUNDING.PAYPAL}
-                style={{
-                  layout: "vertical",
-                  color: "gold",
-                  shape: "rect",
-                  label: "pay",
-                  height: 50,
-                }}
-                disabled={status === "processing"}
-                createOrder={async () => {
-                  setStatus("processing");
-                  setErrorMsg("");
-                  if (!authReady) {
-                    const ok = await handleSignup();
-                    if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
-                  }
-                  const res = await fetch("/api/paypal/create-order", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok || !data.orderId) {
-                    setStatus("error");
-                    setErrorMsg(data.error || "Failed to create order");
-                    throw new Error("Order creation failed");
-                  }
-                  return data.orderId;
-                }}
-                onApprove={async (data) => {
-                  const res = await fetch("/api/paypal/capture-order", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ orderId: data.orderID }),
-                  });
-                  const result = await res.json();
-                  if (res.ok && result.ok) { setStatus("success"); }
-                  else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
-                }}
-                onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
-                onCancel={() => { setStatus("idle"); }}
-              />
-            </div>
+            <PayPalButtons
+              key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+              style={{
+                layout: "vertical",
+                color: "gold",
+                shape: "rect",
+                label: "pay",
+                height: 50,
+                tagline: false,
+              }}
+              disabled={status === "processing"}
+              createOrder={async () => {
+                setStatus("processing");
+                setErrorMsg("");
+                if (!authReady) {
+                  const ok = await handleSignup();
+                  if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
+                }
+                const res = await fetch("/api/paypal/create-order", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.orderId) {
+                  setStatus("error");
+                  setErrorMsg(data.error || "Failed to create order");
+                  throw new Error("Order creation failed");
+                }
+                return data.orderId;
+              }}
+              onApprove={async (data) => {
+                const res = await fetch("/api/paypal/capture-order", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId: data.orderID }),
+                });
+                const result = await res.json();
+                if (res.ok && result.ok) { setStatus("success"); }
+                else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
+              }}
+              onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
+              onCancel={() => { setStatus("idle"); }}
+            />
           </PayPalScriptProvider>
         ) : (
           <button
