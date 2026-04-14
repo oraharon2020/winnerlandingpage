@@ -166,26 +166,26 @@ export async function POST(req: NextRequest) {
     const meshulamApiUrl = isRecurring ? MESHULAM_RECURRING_API_URL : MESHULAM_API_URL;
 
     const formData = new FormData();
+    // Order matches Grow Postman example exactly
     formData.append("pageCode", pageCode);
     formData.append("userId", meshulamUserId);
     formData.append("sum", planPrice.toString());
-    // No special characters allowed per Grow docs
-    formData.append("description", `הטיפ המנצח ${planName}`);
-    // successUrl must include exactly one parameter per Grow docs
     formData.append("successUrl", `${appUrl}/checkout?status=success`);
-    formData.append("cancelUrl", `${appUrl}/checkout?status=cancelled`);
-    formData.append("notifyUrl", `${appUrl}/api/grow/webhook`);
+    formData.append("cancelUrl", `${appUrl}/checkout`);
+    if (isRecurring) {
+      formData.append("chargeType", "1");
+    }
+    formData.append("description", `הטיפ המנצח ${planName}`);
+    if (isRecurring) {
+      formData.append("paymentNum", "12");
+    }
     formData.append("pageField[fullName]", customerName);
     formData.append("pageField[phone]", phone);
     if (customerEmail) {
       formData.append("pageField[email]", customerEmail);
     }
+    formData.append("notifyUrl", `${appUrl}/api/grow/webhook`);
     formData.append("cField1", customId);
-    // For recurring: chargeType=1 (Regular Charge, not suspended), paymentNum per Grow docs
-    if (isRecurring) {
-      formData.append("chargeType", "1");
-      formData.append("paymentNum", "12");
-    }
 
     console.log("[Grow Create] Calling createPaymentProcess:", {
       apiUrl: meshulamApiUrl,
