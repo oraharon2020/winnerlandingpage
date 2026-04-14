@@ -36,7 +36,7 @@ export default function Hero() {
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-10">
               <a
-                href="/auth/signup"
+                href="/checkout"
                 className="pulse-cta bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-8 py-4 rounded-xl text-lg transition-all transform hover:scale-105 flex items-center gap-2"
               >
                 🏆 התחל לנצח — חינם

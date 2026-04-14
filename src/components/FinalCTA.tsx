@@ -17,7 +17,7 @@ export default function FinalCTA() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
-            href="/auth/signup"
+            href="/checkout"
             className="pulse-cta inline-flex items-center gap-2 bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-10 py-4 rounded-xl text-lg transition-all transform hover:scale-105"
           >
             🏆 התחל לנצח — חינם

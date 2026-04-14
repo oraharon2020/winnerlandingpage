@@ -26,7 +26,7 @@ const FALLBACK_PLANS: PlanDisplay[] = [
     periodHe: "לצמיתות", durationDays: 0,
     features: ["טיפ 1 ביום — הטוב ביותר", "צפייה במשחקי היום", "30+ ליגות"],
     badge: null, isPopular: false, isFree: true, ctaText: "התחל בחינם",
-    ctaLink: "/auth/signup", description: null,
+    ctaLink: "/checkout", description: null,
   },
   {
     id: "weekly", nameHe: "חבילת היכרות", icon: "🔥", price: 49, originalPrice: null,

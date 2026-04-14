@@ -48,7 +48,7 @@ export default function Navbar() {
               התחברות
             </a>
             <a
-              href="/auth/signup"
+              href="/checkout"
               className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
             >
               התחל לנצח →
