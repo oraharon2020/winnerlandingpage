@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   PayPalScriptProvider,
   PayPalButtons,
-  PayPalCardFieldsProvider,
-  PayPalCardFieldsForm,
-  usePayPalCardFields,
+  FUNDING,
 } from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -38,28 +36,6 @@ interface CouponState {
   couponId: number;
 }
 
-// Card submit button (must be inside PayPalCardFieldsProvider)
-function CardSubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
-  const { cardFieldsForm } = usePayPalCardFields();
-
-  const handleClick = async () => {
-    if (!cardFieldsForm) return;
-    const formState = await cardFieldsForm.getState();
-    if (!formState.isFormValid) return;
-    cardFieldsForm.submit();
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      disabled={disabled}
-      className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 cursor-pointer"
-    >
-      {label}
-    </button>
-  );
-}
-
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -77,7 +53,6 @@ export default function CheckoutPage() {
   const [fullName, setFullName] = useState("");
   const [authError, setAuthError] = useState("");
   const [authReady, setAuthReady] = useState(false); // true when user is logged in or just signed up
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "paypal">("card");
 
   // Coupon state
   const [couponInput, setCouponInput] = useState("");
@@ -409,57 +384,33 @@ export default function CheckoutPage() {
               clientId: paypalClientId,
               currency: "ILS",
               intent: "capture",
-              components: "buttons,card-fields",
               locale: "he_IL",
+              enableFunding: "card",
             }}
           >
-            {/* Payment method tabs */}
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setPaymentMethod("card")}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all border-2 ${
-                  paymentMethod === "card"
-                    ? "border-[#f5a623] bg-[#f5a623]/10 text-white"
-                    : "border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500"
-                }`}
-              >
-                💳 כרטיס אשראי
-              </button>
-              <button
-                onClick={() => setPaymentMethod("paypal")}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all border-2 ${
-                  paymentMethod === "paypal"
-                    ? "border-[#f5a623] bg-[#f5a623]/10 text-white"
-                    : "border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500"
-                }`}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.603c-.564 0-1.04.408-1.13.964L7.076 21.337z"/></svg>
-                PayPal
-              </button>
-            </div>
-
-            {/* ── Credit Card (inline form) ── */}
-            {paymentMethod === "card" && (
-              <PayPalCardFieldsProvider
+            <div className="space-y-3">
+              {/* Credit / Debit Card Button — first and prominent */}
+              <PayPalButtons
+                key={`card-${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+                fundingSource={FUNDING.CARD}
+                style={{
+                  layout: "vertical",
+                  shape: "rect",
+                  label: "pay",
+                  height: 50,
+                }}
+                disabled={status === "processing"}
                 createOrder={async () => {
                   setStatus("processing");
                   setErrorMsg("");
-
                   if (!authReady) {
                     const ok = await handleSignup();
-                    if (!ok) {
-                      setStatus("idle");
-                      throw new Error("Signup failed");
-                    }
+                    if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
                   }
-
                   const res = await fetch("/api/paypal/create-order", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      planId: selectedPlan,
-                      couponCode: appliedCoupon?.code || null,
-                    }),
+                    body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
                   });
                   const data = await res.json();
                   if (!res.ok || !data.orderId) {
@@ -476,33 +427,23 @@ export default function CheckoutPage() {
                     body: JSON.stringify({ orderId: data.orderID }),
                   });
                   const result = await res.json();
-                  if (res.ok && result.ok) {
-                    setStatus("success");
-                  } else {
-                    setStatus("error");
-                    setErrorMsg(result.error || "Payment capture failed");
-                  }
+                  if (res.ok && result.ok) { setStatus("success"); }
+                  else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
                 }}
-                onError={(err) => {
-                  console.error("Card payment error:", err);
-                  setStatus("error");
-                  setErrorMsg("שגיאה בתשלום בכרטיס. נסה שוב או השתמש ב-PayPal.");
-                }}
-              >
-                <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-4">
-                  <PayPalCardFieldsForm />
-                </div>
-                <CardSubmitButton
-                  disabled={status === "processing"}
-                  label={status === "processing" ? "⏳ מעבד..." : `💳 שלם ₪${finalPrice}`}
-                />
-              </PayPalCardFieldsProvider>
-            )}
+                onError={() => { setStatus("error"); setErrorMsg("שגיאה בתשלום בכרטיס"); }}
+                onCancel={() => { setStatus("idle"); }}
+              />
 
-            {/* ── PayPal Button ── */}
-            {paymentMethod === "paypal" && (
+              <div className="flex items-center gap-3 text-gray-600 text-xs">
+                <div className="flex-1 border-t border-gray-700" />
+                <span>או</span>
+                <div className="flex-1 border-t border-gray-700" />
+              </div>
+
+              {/* PayPal Button */}
               <PayPalButtons
-                key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+                key={`paypal-${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+                fundingSource={FUNDING.PAYPAL}
                 style={{
                   layout: "vertical",
                   color: "gold",
@@ -514,22 +455,14 @@ export default function CheckoutPage() {
                 createOrder={async () => {
                   setStatus("processing");
                   setErrorMsg("");
-
                   if (!authReady) {
                     const ok = await handleSignup();
-                    if (!ok) {
-                      setStatus("idle");
-                      throw new Error("Signup failed");
-                    }
+                    if (!ok) { setStatus("idle"); throw new Error("Signup failed"); }
                   }
-
                   const res = await fetch("/api/paypal/create-order", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      planId: selectedPlan,
-                      couponCode: appliedCoupon?.code || null,
-                    }),
+                    body: JSON.stringify({ planId: selectedPlan, couponCode: appliedCoupon?.code || null }),
                   });
                   const data = await res.json();
                   if (!res.ok || !data.orderId) {
@@ -546,22 +479,13 @@ export default function CheckoutPage() {
                     body: JSON.stringify({ orderId: data.orderID }),
                   });
                   const result = await res.json();
-                  if (res.ok && result.ok) {
-                    setStatus("success");
-                  } else {
-                    setStatus("error");
-                    setErrorMsg(result.error || "Payment capture failed");
-                  }
+                  if (res.ok && result.ok) { setStatus("success"); }
+                  else { setStatus("error"); setErrorMsg(result.error || "Payment capture failed"); }
                 }}
-                onError={() => {
-                  setStatus("error");
-                  setErrorMsg("שגיאה בתהליך התשלום");
-                }}
-                onCancel={() => {
-                  setStatus("idle");
-                }}
+                onError={() => { setStatus("error"); setErrorMsg("שגיאה בתהליך התשלום"); }}
+                onCancel={() => { setStatus("idle"); }}
               />
-            )}
+            </div>
           </PayPalScriptProvider>
         ) : (
           <button
@@ -602,10 +526,29 @@ export default function CheckoutPage() {
         </div>
 
         {/* Trust indicators */}
-        <div className="flex items-center justify-center gap-6 mt-8 text-xs text-gray-500">
-          <span>🔒 תשלום מאובטח</span>
-          <span>↩️ ביטול בכל רגע</span>
-          <span>🛡️ PayPal Buyer Protection</span>
+        <div className="flex items-center justify-center gap-4 mt-8 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-gray-800/60 px-3 py-1.5 rounded-full">
+            <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            <span className="text-gray-300 text-[11px]">SSL מאובטח</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-gray-800/60 px-3 py-1.5 rounded-full">
+            <span className="text-[11px]">↩️</span>
+            <span className="text-gray-300 text-[11px]">ביטול בכל רגע</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-gray-800/60 px-3 py-1.5 rounded-full">
+            <span className="text-[11px]">🛡️</span>
+            <span className="text-gray-300 text-[11px]">הגנת קונים PayPal</span>
+          </div>
+        </div>
+
+        {/* Accepted cards visual */}
+        <div className="flex items-center justify-center gap-3 mt-4 opacity-50">
+          <span className="text-[10px] text-gray-500">נתמך:</span>
+          <span className="text-lg">💳</span>
+          <span className="text-xs text-gray-500 font-medium">Visa</span>
+          <span className="text-xs text-gray-500 font-medium">Mastercard</span>
+          <span className="text-xs text-gray-500 font-medium">Amex</span>
+          <span className="text-xs text-gray-500 font-medium">PayPal</span>
         </div>
       </div>
     </div>
