@@ -169,10 +169,11 @@ export async function POST(req: NextRequest) {
     formData.append("pageCode", pageCode);
     formData.append("userId", meshulamUserId);
     formData.append("sum", planPrice.toString());
-    // No special characters allowed per Grow docs (no em-dash, parentheses, etc.)
+    // No special characters allowed per Grow docs
     formData.append("description", `הטיפ המנצח ${planName}`);
-    formData.append("successUrl", `${appUrl}/checkout?payment=success`);
-    formData.append("cancelUrl", `${appUrl}/checkout?payment=cancelled`);
+    // successUrl must include exactly one parameter per Grow docs
+    formData.append("successUrl", `${appUrl}/checkout?status=success`);
+    formData.append("cancelUrl", `${appUrl}/checkout?status=cancelled`);
     formData.append("notifyUrl", `${appUrl}/api/grow/webhook`);
     formData.append("pageField[fullName]", customerName);
     formData.append("pageField[phone]", phone);

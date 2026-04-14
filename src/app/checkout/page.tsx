@@ -98,7 +98,7 @@ export default function CheckoutPage() {
 
   // Check for success/cancelled redirects from Grow
   useEffect(() => {
-    const payment = searchParams.get("payment");
+    const payment = searchParams.get("payment") || searchParams.get("status");
     if (payment === "success") {
       // Poll to verify subscription was actually created by the webhook
       setStatus("processing");
