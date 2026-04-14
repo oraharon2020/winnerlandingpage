@@ -165,29 +165,35 @@ export default function CheckoutPage() {
 
   // Handle Grow payment
   const handleGrowPayment = useCallback(async () => {
+    console.log("[Checkout] handleGrowPayment clicked", { authReady, isLoggedIn, fullName, phone, email, selectedPlan });
     setStatus("processing");
     setErrorMsg("");
 
     if (!authReady) {
+      console.log("[Checkout] Not authReady, attempting signup...");
       const ok = await handleSignup();
-      if (!ok) { setStatus("idle"); return; }
+      if (!ok) { console.log("[Checkout] Signup failed"); setStatus("idle"); return; }
+      console.log("[Checkout] Signup success");
     }
 
     if (!phone.trim()) {
+      console.log("[Checkout] Phone missing");
       setErrorMsg("נא למלא מספר טלפון");
-      setStatus("idle");
+      setStatus("error");
       return;
     }
 
     if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
+      console.log("[Checkout] Full name invalid:", fullName);
       setErrorMsg("נא למלא שם מלא (שם פרטי + שם משפחה)");
-      setStatus("idle");
+      setStatus("error");
       return;
     }
 
     const customerName = fullName.trim();
 
     try {
+      console.log("[Checkout] Calling /api/grow/create...");
       const res = await fetch("/api/grow/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,6 +206,7 @@ export default function CheckoutPage() {
         }),
       });
       const data = await res.json();
+      console.log("[Checkout] API response:", res.status, data);
 
       if (!res.ok || !data.success) {
         setStatus("error");
@@ -212,16 +219,19 @@ export default function CheckoutPage() {
         return;
       }
 
+      console.log("[Checkout] authCode:", data.authCode, "growPayment:", !!window.growPayment, "sdk_ready:", window.meshulam_sdk_ready);
       if (data.authCode && window.growPayment && window.meshulam_sdk_ready) {
-        console.log('Rendering Grow payment options with authCode:', data.authCode);
+        console.log("[Checkout] Rendering Grow payment options with authCode:", data.authCode);
         window.growPayment.renderPaymentOptions(data.authCode);
       } else if (data.paymentUrl) {
+        console.log("[Checkout] Redirecting to paymentUrl:", data.paymentUrl);
         window.location.href = data.paymentUrl;
       } else {
         setStatus("error");
         setErrorMsg("שגיאה: לא התקבל לינק תשלום");
       }
-    } catch {
+    } catch (err) {
+      console.error("[Checkout] Error:", err);
       setStatus("error");
       setErrorMsg("שגיאת רשת, נסה שוב");
     }
