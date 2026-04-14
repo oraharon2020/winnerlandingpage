@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import {
+  PayPalScriptProvider,
+  PayPalButtons,
+  PayPalCardFieldsProvider,
+  PayPalCardFieldsForm,
+  usePayPalCardFields,
+} from "@paypal/react-paypal-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +38,28 @@ interface CouponState {
   couponId: number;
 }
 
+// Card submit button (must be inside PayPalCardFieldsProvider)
+function CardSubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
+  const { cardFieldsForm } = usePayPalCardFields();
+
+  const handleClick = async () => {
+    if (!cardFieldsForm) return;
+    const formState = await cardFieldsForm.getState();
+    if (!formState.isFormValid) return;
+    cardFieldsForm.submit();
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={disabled}
+      className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 cursor-pointer"
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function CheckoutPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -49,6 +77,7 @@ export default function CheckoutPage() {
   const [fullName, setFullName] = useState("");
   const [authError, setAuthError] = useState("");
   const [authReady, setAuthReady] = useState(false); // true when user is logged in or just signed up
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "paypal">("card");
 
   // Coupon state
   const [couponInput, setCouponInput] = useState("");
@@ -380,70 +409,159 @@ export default function CheckoutPage() {
               clientId: paypalClientId,
               currency: "ILS",
               intent: "capture",
+              components: "buttons,card-fields",
+              locale: "he_IL",
             }}
           >
-            <PayPalButtons
-              key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
-              style={{
-                layout: "vertical",
-                color: "gold",
-                shape: "rect",
-                label: "pay",
-                height: 50,
-              }}
-              disabled={status === "processing"}
-              createOrder={async () => {
-                setStatus("processing");
-                setErrorMsg("");
+            {/* Payment method tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setPaymentMethod("card")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all border-2 ${
+                  paymentMethod === "card"
+                    ? "border-[#f5a623] bg-[#f5a623]/10 text-white"
+                    : "border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500"
+                }`}
+              >
+                💳 כרטיס אשראי
+              </button>
+              <button
+                onClick={() => setPaymentMethod("paypal")}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all border-2 ${
+                  paymentMethod === "paypal"
+                    ? "border-[#f5a623] bg-[#f5a623]/10 text-white"
+                    : "border-gray-700 bg-gray-900/50 text-gray-400 hover:border-gray-500"
+                }`}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797H9.603c-.564 0-1.04.408-1.13.964L7.076 21.337z"/></svg>
+                PayPal
+              </button>
+            </div>
 
-                // Step 1: Create account if needed
-                if (!authReady) {
-                  const ok = await handleSignup();
-                  if (!ok) {
-                    setStatus("idle");
-                    throw new Error("Signup failed");
+            {/* ── Credit Card (inline form) ── */}
+            {paymentMethod === "card" && (
+              <PayPalCardFieldsProvider
+                createOrder={async () => {
+                  setStatus("processing");
+                  setErrorMsg("");
+
+                  if (!authReady) {
+                    const ok = await handleSignup();
+                    if (!ok) {
+                      setStatus("idle");
+                      throw new Error("Signup failed");
+                    }
                   }
-                }
 
-                // Step 2: Create PayPal order
-                const res = await fetch("/api/paypal/create-order", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    planId: selectedPlan,
-                    couponCode: appliedCoupon?.code || null,
-                  }),
-                });
-                const data = await res.json();
-                if (!res.ok || !data.orderId) {
+                  const res = await fetch("/api/paypal/create-order", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      planId: selectedPlan,
+                      couponCode: appliedCoupon?.code || null,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok || !data.orderId) {
+                    setStatus("error");
+                    setErrorMsg(data.error || "Failed to create order");
+                    throw new Error("Order creation failed");
+                  }
+                  return data.orderId;
+                }}
+                onApprove={async (data) => {
+                  const res = await fetch("/api/paypal/capture-order", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ orderId: data.orderID }),
+                  });
+                  const result = await res.json();
+                  if (res.ok && result.ok) {
+                    setStatus("success");
+                  } else {
+                    setStatus("error");
+                    setErrorMsg(result.error || "Payment capture failed");
+                  }
+                }}
+                onError={(err) => {
+                  console.error("Card payment error:", err);
                   setStatus("error");
-                  setErrorMsg(data.error || "Failed to create order");
-                  throw new Error("Order creation failed");
-                }
-                return data.orderId;
-              }}
-              onApprove={async (data) => {
-                const res = await fetch("/api/paypal/capture-order", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId: data.orderID }),
-                });
-                const result = await res.json();
-                if (res.ok && result.ok) {
-                  setStatus("success");
-                } else {
+                  setErrorMsg("שגיאה בתשלום בכרטיס. נסה שוב או השתמש ב-PayPal.");
+                }}
+              >
+                <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-4">
+                  <PayPalCardFieldsForm />
+                </div>
+                <CardSubmitButton
+                  disabled={status === "processing"}
+                  label={status === "processing" ? "⏳ מעבד..." : `💳 שלם ₪${finalPrice}`}
+                />
+              </PayPalCardFieldsProvider>
+            )}
+
+            {/* ── PayPal Button ── */}
+            {paymentMethod === "paypal" && (
+              <PayPalButtons
+                key={`${selectedPlan}-${appliedCoupon?.code || "none"}-${authReady}`}
+                style={{
+                  layout: "vertical",
+                  color: "gold",
+                  shape: "rect",
+                  label: "pay",
+                  height: 50,
+                }}
+                disabled={status === "processing"}
+                createOrder={async () => {
+                  setStatus("processing");
+                  setErrorMsg("");
+
+                  if (!authReady) {
+                    const ok = await handleSignup();
+                    if (!ok) {
+                      setStatus("idle");
+                      throw new Error("Signup failed");
+                    }
+                  }
+
+                  const res = await fetch("/api/paypal/create-order", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      planId: selectedPlan,
+                      couponCode: appliedCoupon?.code || null,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok || !data.orderId) {
+                    setStatus("error");
+                    setErrorMsg(data.error || "Failed to create order");
+                    throw new Error("Order creation failed");
+                  }
+                  return data.orderId;
+                }}
+                onApprove={async (data) => {
+                  const res = await fetch("/api/paypal/capture-order", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ orderId: data.orderID }),
+                  });
+                  const result = await res.json();
+                  if (res.ok && result.ok) {
+                    setStatus("success");
+                  } else {
+                    setStatus("error");
+                    setErrorMsg(result.error || "Payment capture failed");
+                  }
+                }}
+                onError={() => {
                   setStatus("error");
-                  setErrorMsg(result.error || "Payment capture failed");
-                }
-              }}
-              onError={() => {
-                setStatus("error");
-                setErrorMsg("שגיאה בתהליך התשלום");
-              }}
-              onCancel={() => {
-                setStatus("idle");
-              }}
-            />
+                  setErrorMsg("שגיאה בתהליך התשלום");
+                }}
+                onCancel={() => {
+                  setStatus("idle");
+                }}
+              />
+            )}
           </PayPalScriptProvider>
         ) : (
           <button
