@@ -158,8 +158,9 @@ export async function POST(req: NextRequest) {
     const isRecurring = durationDays >= 28 && durationDays <= 31 && !!MESHULAM_RECURRING_PAGE_CODE;
     const pageCode = isRecurring ? MESHULAM_RECURRING_PAGE_CODE : MESHULAM_PAGE_CODE;
     // cField1 format: "planId_supabaseUid_durationDays_couponId_recurring"
-    // No special characters allowed per Grow docs
-    const customId = `${planId}_${user.id}_${durationDays}_${couponId || '0'}_${isRecurring ? '1' : '0'}`;
+    // No special characters allowed per Grow docs — remove hyphens from UUID
+    const safeUid = user.id.replace(/-/g, '');
+    const customId = `${planId}_${safeUid}_${durationDays}_${couponId || '0'}_${isRecurring ? '1' : '0'}`;
 
     const meshulamUserId = isRecurring ? MESHULAM_RECURRING_USER_ID : MESHULAM_USER_ID;
     const meshulamApiUrl = isRecurring ? MESHULAM_RECURRING_API_URL : MESHULAM_API_URL;

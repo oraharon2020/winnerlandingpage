@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Support both old ":" and new "_" separator
-    // Supabase UIDs contain hyphens but not colons or underscores
-    // New format uses "_" — split smartly
     const sep = customId.includes("_") ? "_" : ":";
     const parts = customId.split(sep);
-    // For underscore format: planId_uuid-with-hyphens_days_couponId_recurring
-    // UUID is in parts[1] through parts[1] (no underscores in UUID)
     const planId = parts[0] || "";
-    const supabaseUid = parts[1] || "";
+    // UUID may be without hyphens — restore standard format for DB lookup
+    const rawUid = parts[1] || "";
+    const supabaseUid = rawUid.length === 32 && !rawUid.includes("-")
+      ? `${rawUid.slice(0,8)}-${rawUid.slice(8,12)}-${rawUid.slice(12,16)}-${rawUid.slice(16,20)}-${rawUid.slice(20)}`
+      : rawUid;
     const durationDays = parseInt(parts[2]) || 30;
     const couponId = parts[3] && parts[3] !== '0' ? parseInt(parts[3]) : null;
     const isRecurringFlag = parts[4] === "1";
