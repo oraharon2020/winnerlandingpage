@@ -219,7 +219,8 @@ export default function CheckoutPage() {
         return;
       }
 
-      const isSandbox = (process.env.NEXT_PUBLIC_MESHULAM_ENV || "production").toLowerCase() === "sandbox";
+      // Detect sandbox from the payment URL returned by Meshulam
+      const isSandbox = data.paymentUrl?.includes("sandbox") || false;
       console.log("[Checkout] authCode:", data.authCode, "growPayment:", !!window.growPayment, "sdk_ready:", window.meshulam_sdk_ready, "sandbox:", isSandbox);
       
       if (!isSandbox && data.authCode && window.growPayment && window.meshulam_sdk_ready) {
