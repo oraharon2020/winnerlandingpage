@@ -68,7 +68,7 @@ interface DashboardData {
 
 interface UserData {
   id: number;
-  telegramId: number;
+  telegramId: number | null;
   username: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -76,12 +76,15 @@ interface UserData {
   isAdmin: boolean;
   isBlocked: boolean;
   createdAt: string;
+  supabaseUid: string | null;
+  userType: "web" | "telegram" | "both";
   subscription: {
     plan: string;
     expires: string;
     active: boolean;
     recurring: boolean;
     price: number;
+    paymentMethod: string;
   } | null;
   campaignSource: string | null;
 }
@@ -366,6 +369,12 @@ function UsersTab() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [grantModal, setGrantModal] = useState<UserData | null>(null);
   const [grantDays, setGrantDays] = useState(30);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserDays, setNewUserDays] = useState(0);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -440,7 +449,15 @@ function UsersTab() {
           <option value="all">👥 כולם</option>
           <option value="premium">⭐ פרימיום</option>
           <option value="free">🆓 חינם</option>
+          <option value="web">🌐 אתר</option>
+          <option value="telegram">📱 טלגרם</option>
         </select>
+        <button
+          onClick={() => { setShowCreateModal(true); setCreateError(""); setNewUserEmail(""); setNewUserName(""); setNewUserDays(0); }}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          ➕ הוסף משתמש
+        </button>
         <span className="text-gray-500 text-sm">{total} משתמשים</span>
       </div>
 
@@ -474,8 +491,17 @@ function UsersTab() {
                         {u.username && (
                           <span className="text-gray-500 text-xs mr-2">@{u.username}</span>
                         )}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ml-1 ${
+                          u.userType === "web" ? "bg-blue-900/40 text-blue-400" :
+                          u.userType === "both" ? "bg-purple-900/40 text-purple-400" :
+                          "bg-gray-800 text-gray-500"
+                        }`}>
+                          {u.userType === "web" ? "🌐" : u.userType === "both" ? "🌐📱" : "📱"}
+                        </span>
                       </div>
-                      <span className="text-gray-600 text-xs">ID: {u.telegramId}</span>
+                      <span className="text-gray-600 text-xs">
+                        {u.telegramId ? `TG: ${u.telegramId}` : u.supabaseUid ? `web:${u.supabaseUid.slice(0, 8)}` : `ID: ${u.id}`}
+                      </span>
                     </td>
                     <td className="text-center py-3">
                       {u.isAdmin && <span className="text-red-400 text-xs">👑 ADMIN</span>}
@@ -601,7 +627,7 @@ function UsersTab() {
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4">
             <h3 className="text-lg font-bold mb-4">⭐ הענק פרימיום</h3>
             <p className="text-gray-400 text-sm mb-4">
-              {grantModal.firstName || grantModal.username || grantModal.telegramId}
+              {grantModal.firstName || grantModal.username || (grantModal.telegramId ? `#${grantModal.telegramId}` : `ID: ${grantModal.id}`)}
             </p>
             <div className="mb-4">
               <label className="text-gray-400 text-sm mb-1 block">תקופה</label>
@@ -627,6 +653,101 @@ function UsersTab() {
               </button>
               <button
                 onClick={() => setGrantModal(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 py-2 rounded-lg text-sm transition-colors"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Web User Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-bold mb-4">➕ הוסף משתמש חדש</h3>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-gray-400 text-xs mb-1 block">שם מלא *</label>
+                <input
+                  type="text"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
+                  placeholder="ישראל ישראלי"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs mb-1 block">אימייל *</label>
+                <input
+                  type="email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  dir="ltr"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-gray-400 text-xs mb-1 block">הענק פרימיום (אופציונלי)</label>
+                <select
+                  value={newUserDays}
+                  onChange={(e) => setNewUserDays(parseInt(e.target.value))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                >
+                  <option value={0}>ללא פרימיום</option>
+                  <option value={7}>7 ימים</option>
+                  <option value={30}>30 ימים (חודש)</option>
+                  <option value={90}>90 ימים (3 חודשים)</option>
+                  <option value={365}>365 ימים (שנה)</option>
+                  <option value={36500}>ללא הגבלה</option>
+                </select>
+              </div>
+              {createError && (
+                <p className="text-red-400 text-xs bg-red-400/10 rounded-lg py-2 px-3">{createError}</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!newUserEmail.trim() || !newUserName.trim()) {
+                    setCreateError("נא למלא שם ואימייל");
+                    return;
+                  }
+                  setCreateLoading(true);
+                  setCreateError("");
+                  try {
+                    const res = await fetch("/api/admin/users", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "create_web_user",
+                        email: newUserEmail.trim(),
+                        fullName: newUserName.trim(),
+                        days: newUserDays,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setCreateError(data.error || "שגיאה ביצירת משתמש");
+                    } else {
+                      setShowCreateModal(false);
+                      fetchUsers();
+                    }
+                  } catch {
+                    setCreateError("שגיאת רשת");
+                  } finally {
+                    setCreateLoading(false);
+                  }
+                }}
+                disabled={createLoading}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {createLoading ? "⏳ יוצר..." : "✅ צור משתמש"}
+              </button>
+              <button
+                onClick={() => setShowCreateModal(false)}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 py-2 rounded-lg text-sm transition-colors"
               >
                 ביטול
@@ -898,6 +1019,7 @@ interface SubData {
   paymentMethod: string;
   isRecurring: boolean;
   paypalOrderId: string | null;
+  paymentData: Record<string, string> | null;
   createdAt: string;
   userName: string;
 }
@@ -949,7 +1071,10 @@ function SubscriptionsTab() {
     { id: "all", label: "הכל" },
     { id: "active", label: "פעילים" },
     { id: "expired", label: "פג תוקף" },
+    { id: "recurring", label: "🔄 הו\"ק" },
+    { id: "grow", label: "Grow" },
     { id: "paypal", label: "PayPal" },
+    { id: "coupon", label: "קופון" },
     { id: "admin", label: "אדמין" },
   ];
 
@@ -1011,9 +1136,17 @@ function SubscriptionsTab() {
                       <td className="text-center py-3 text-white">₪{s.pricePaid}</td>
                       <td className="text-center py-3">
                         <span className={`text-xs ${
-                          s.paymentMethod === "paypal" ? "text-blue-400" : "text-amber-400"
+                          s.paymentMethod === "grow" ? "text-emerald-400" :
+                          s.paymentMethod === "paypal" ? "text-blue-400" :
+                          s.paymentMethod === "coupon" ? "text-pink-400" :
+                          "text-amber-400"
                         }`}>
-                          {s.paymentMethod === "paypal" ? "💳 PayPal" : "👑 אדמין"}
+                          {s.paymentMethod === "grow" ? "💳 Grow" :
+                           s.paymentMethod === "paypal" ? "💳 PayPal" :
+                           s.paymentMethod === "coupon" ? "🎫 קופון" :
+                           s.paymentMethod === "admin" ? "👑 אדמין" :
+                           s.paymentMethod}
+                          {s.paymentData?.card_suffix && ` ••${s.paymentData.card_suffix}`}
                         </span>
                       </td>
                       <td className="text-center py-3 text-gray-400 text-xs">
@@ -1025,6 +1158,9 @@ function SubscriptionsTab() {
                         }`}>
                           {isActiveNow ? "✅ פעיל" : "❌ לא פעיל"}
                         </span>
+                        {s.isRecurring && (
+                          <span className="block text-[10px] text-orange-400 mt-0.5">🔄 הו&quot;ק</span>
+                        )}
                       </td>
                       <td className="text-center py-3">
                         <div className="flex items-center justify-center gap-1">
@@ -1055,6 +1191,17 @@ function SubscriptionsTab() {
                               >
                                 ביטול
                               </button>
+                              {s.isRecurring && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm("בטל הוראת קבע? (המנוי יישאר עד סוף התקופה)")) handleAction("cancel_recurring", s.id);
+                                  }}
+                                  disabled={actionLoading === s.id}
+                                  className="text-xs bg-orange-600/20 text-orange-400 hover:bg-orange-600/40 px-2 py-1 rounded transition-colors"
+                                >
+                                  בטל הו&quot;ק
+                                </button>
+                              )}
                             </>
                           )}
                           {!isActiveNow && (

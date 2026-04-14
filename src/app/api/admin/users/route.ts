@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { verifyAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  if (!(await verifyAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!pool) {
     return NextResponse.json({ error: "DB not configured" }, { status: 500 });
   }
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
       let paramIndex = 1;
 
       if (search) {
-        whereClause += ` WHERE (u.username ILIKE $${paramIndex} OR u.first_name ILIKE $${paramIndex} OR CAST(u.telegram_id AS TEXT) LIKE $${paramIndex})`;
+        whereClause += ` WHERE (u.username ILIKE $${paramIndex} OR u.first_name ILIKE $${paramIndex} OR CAST(u.telegram_id AS TEXT) LIKE $${paramIndex} OR u.supabase_uid ILIKE $${paramIndex})`;
         params.push(`%${search}%`);
         paramIndex++;
       }
@@ -34,6 +36,12 @@ export async function GET(request: NextRequest) {
       } else if (filter === "free") {
         whereClause += whereClause ? " AND" : " WHERE";
         whereClause += " u.is_premium = false";
+      } else if (filter === "web") {
+        whereClause += whereClause ? " AND" : " WHERE";
+        whereClause += " u.supabase_uid IS NOT NULL";
+      } else if (filter === "telegram") {
+        whereClause += whereClause ? " AND" : " WHERE";
+        whereClause += " u.telegram_id IS NOT NULL";
       }
 
       // Count total
@@ -56,11 +64,13 @@ export async function GET(request: NextRequest) {
           u.is_blocked,
           u.created_at,
           u.updated_at,
+          u.supabase_uid,
           s.plan_type as sub_plan,
           s.expires_at as sub_expires,
           s.is_active as sub_active,
           s.is_recurring as sub_recurring,
           s.price_paid as sub_price,
+          s.payment_method as sub_payment_method,
           us.source as campaign_source
         FROM users u
         LEFT JOIN LATERAL (
@@ -87,6 +97,8 @@ export async function GET(request: NextRequest) {
           isBlocked: r.is_blocked,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
+          supabaseUid: r.supabase_uid,
+          userType: r.supabase_uid ? (r.telegram_id ? "both" : "web") : "telegram",
           subscription: r.sub_plan
             ? {
                 plan: r.sub_plan,
@@ -94,6 +106,7 @@ export async function GET(request: NextRequest) {
                 active: r.sub_active,
                 recurring: r.sub_recurring,
                 price: parseFloat(r.sub_price || "0"),
+                paymentMethod: r.sub_payment_method,
               }
             : null,
           campaignSource: r.campaign_source,
@@ -122,30 +135,74 @@ export async function GET(request: NextRequest) {
 // ──────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  if (!(await verifyAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!pool) {
     return NextResponse.json({ error: "DB not configured" }, { status: 500 });
   }
 
-  let body: { userId: number; action: string; days?: number };
+  let body: { userId?: number; action: string; days?: number; email?: string; fullName?: string; phone?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { userId, action, days } = body;
-  if (!userId || !action) {
-    return NextResponse.json({ error: "Missing userId or action" }, { status: 400 });
-  }
+  const { action } = body;
 
-  const allowed = ["grant_premium", "revoke_premium", "block", "unblock"];
+  const allowed = ["grant_premium", "revoke_premium", "block", "unblock", "create_web_user"];
   if (!allowed.includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
+  if (action !== "create_web_user" && !body.userId) {
+    return NextResponse.json({ error: "Missing userId" }, { status: 400 });
   }
 
   try {
     const client = await pool.connect();
     try {
+      // Create a web user manually
+      if (action === "create_web_user") {
+        const { email, fullName, phone } = body;
+        if (!email || !fullName) {
+          return NextResponse.json({ error: "Missing email or fullName" }, { status: 400 });
+        }
+
+        // Check if already exists by username (email)
+        const existing = await client.query(
+          `SELECT id FROM users WHERE username = $1`,
+          [email]
+        );
+        if (existing.rows.length > 0) {
+          return NextResponse.json({ error: "משתמש עם אימייל זה כבר קיים", existingId: existing.rows[0].id }, { status: 409 });
+        }
+
+        const result = await client.query(
+          `INSERT INTO users (first_name, username, is_premium, is_admin, is_blocked, created_at, updated_at)
+           VALUES ($1, $2, false, false, false, NOW(), NOW())
+           RETURNING id`,
+          [fullName, email]
+        );
+
+        const newUserId = result.rows[0].id;
+
+        // Optionally grant premium if days specified
+        if (body.days && body.days > 0) {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + body.days);
+          await client.query(
+            `INSERT INTO subscriptions (user_id, plan_type, price_paid, starts_at, expires_at, is_active, payment_method, is_recurring)
+             VALUES ($1, 'monthly', 0, NOW(), $2, true, 'admin', false)`,
+            [newUserId, expiresAt.toISOString()]
+          );
+          await client.query(`UPDATE users SET is_premium = true, updated_at = NOW() WHERE id = $1`, [newUserId]);
+        }
+
+        return NextResponse.json({ ok: true, message: `Web user created (ID: ${newUserId})`, userId: newUserId });
+      }
+
+      const { userId, days } = body;
+
       if (action === "grant_premium") {
         const durationDays = days || 30;
         const expiresAt = new Date();

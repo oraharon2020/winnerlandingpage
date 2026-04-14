@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { verifyAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 // POST: Run migration to create plans + coupons tables and seed defaults
 export async function POST() {
+  if (!(await verifyAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!pool) {
     return NextResponse.json({ error: "DB not configured" }, { status: 500 });
   }

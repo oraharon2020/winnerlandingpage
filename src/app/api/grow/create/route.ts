@@ -4,6 +4,7 @@ import pool from "@/lib/db";
 
 const MESHULAM_API_URL = process.env.MESHULAM_API_URL || "https://secure.meshulam.co.il/api/light/server/1.0";
 const MESHULAM_PAGE_CODE = process.env.MESHULAM_PAGE_CODE || "";
+const MESHULAM_RECURRING_PAGE_CODE = process.env.MESHULAM_RECURRING_PAGE_CODE || "";
 const MESHULAM_USER_ID = process.env.MESHULAM_USER_ID || "";
 
 export const dynamic = "force-dynamic";
@@ -38,10 +39,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "מספר טלפון לא תקין (05xxxxxxxx)" }, { status: 400 });
     }
 
+    // Ensure users row exists for web signups
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        const existingUser = await client.query(`SELECT id FROM users WHERE supabase_uid = $1`, [user.id]);
+        if (existingUser.rows.length === 0) {
+          await client.query(
+            `INSERT INTO users (supabase_uid, first_name, username, is_premium, is_admin, is_blocked, created_at, updated_at)
+             VALUES ($1, $2, $3, false, false, false, NOW(), NOW())
+             ON CONFLICT (supabase_uid) DO NOTHING`,
+            [user.id, customerName, user.email]
+          );
+          console.log(`[Grow Create] Created users row for supabase_uid=${user.id}`);
+        }
+      } finally {
+        client.release();
+      }
+    }
+
     // Fetch plan
     let planPrice = 0;
     let planName = "";
     let durationDays = 0;
+    let couponId: number | null = null;
 
     if (pool) {
       const client = await pool.connect();
@@ -57,7 +78,7 @@ export async function POST(req: NextRequest) {
         planName = planResult.rows[0].name_he;
         durationDays = planResult.rows[0].duration_days;
 
-        // Apply coupon
+        // Apply coupon (validate only — increment uses after confirmed payment in webhook)
         if (couponCode) {
           const couponResult = await client.query(
             `SELECT id, discount_percent, discount_amount FROM coupons
@@ -70,6 +91,7 @@ export async function POST(req: NextRequest) {
           );
           if (couponResult.rows.length > 0) {
             const coupon = couponResult.rows[0];
+            couponId = coupon.id;
             let discount = 0;
             if (coupon.discount_percent) {
               discount = Math.round(planPrice * coupon.discount_percent / 100);
@@ -77,7 +99,6 @@ export async function POST(req: NextRequest) {
               discount = parseFloat(coupon.discount_amount);
             }
             planPrice = Math.max(0, planPrice - discount);
-            await client.query(`UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`, [coupon.id]);
           }
         }
       } finally {
@@ -113,6 +134,10 @@ export async function POST(req: NextRequest) {
               [userId, planId, expiresAt.toISOString()]
             );
             await client.query(`UPDATE users SET is_premium = true, updated_at = NOW() WHERE id = $1`, [userId]);
+            // Increment coupon uses for free orders
+            if (couponId) {
+              await client.query(`UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`, [couponId]);
+            }
           }
           await client.query("COMMIT");
         } catch (e) {
@@ -126,14 +151,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Create Grow/Meshulam payment
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.hatiphamnatzeach.co.il";
-    const customId = `${planId}:${user.id}:${durationDays}`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.tipssport.co.il";
+    // Determine if this is a recurring (monthly) plan
+    const isRecurring = durationDays >= 28 && durationDays <= 31 && !!MESHULAM_RECURRING_PAGE_CODE;
+    const pageCode = isRecurring ? MESHULAM_RECURRING_PAGE_CODE : MESHULAM_PAGE_CODE;
+    // cField1 format: "planId:supabaseUid:durationDays:couponId:recurring"
+    const customId = `${planId}:${user.id}:${durationDays}:${couponId || ''}:${isRecurring ? '1' : '0'}`;
 
     const formData = new FormData();
-    formData.append("pageCode", MESHULAM_PAGE_CODE);
+    formData.append("pageCode", pageCode);
     formData.append("userId", MESHULAM_USER_ID);
     formData.append("sum", planPrice.toString());
-    formData.append("description", `הטיפ המנצח — ${planName}`);
+    formData.append("description", `הטיפ המנצח — ${planName}${isRecurring ? ' (הוראת קבע חודשית)' : ''}`);
     formData.append("successUrl", `${appUrl}/checkout?payment=success`);
     formData.append("cancelUrl", `${appUrl}/checkout?payment=cancelled`);
     formData.append("notifyUrl", `${appUrl}/api/grow/webhook`);
@@ -143,14 +172,19 @@ export async function POST(req: NextRequest) {
       formData.append("pageField[email]", customerEmail);
     }
     formData.append("cField1", customId);
+    // For recurring, set chargeType=1 (Regular / active immediately)
+    if (isRecurring) {
+      formData.append("chargeType", "1");
+    }
 
     console.log("[Grow Create] Calling createPaymentProcess:", {
       apiUrl: MESHULAM_API_URL,
-      pageCodeSet: !!MESHULAM_PAGE_CODE,
+      pageCodeSet: !!pageCode,
       userIdSet: !!MESHULAM_USER_ID,
       sum: planPrice,
       description: `הטיפ המנצח — ${planName}`,
       notifyUrl: `${appUrl}/api/grow/webhook`,
+      isRecurring,
     });
 
     const response = await fetch(`${MESHULAM_API_URL}/createPaymentProcess`, {
@@ -165,7 +199,7 @@ export async function POST(req: NextRequest) {
       const processToken = result.data?.processToken;
 
       const infoFormData = new FormData();
-      infoFormData.append("pageCode", MESHULAM_PAGE_CODE);
+      infoFormData.append("pageCode", pageCode);
       infoFormData.append("userId", MESHULAM_USER_ID);
       infoFormData.append("processId", processId.toString());
       infoFormData.append("processToken", processToken);
@@ -178,7 +212,7 @@ export async function POST(req: NextRequest) {
 
       const isSandbox = MESHULAM_API_URL.includes("sandbox");
       const basePaymentUrl = isSandbox ? "https://sandbox.meshulam.co.il" : "https://secure.meshulam.co.il";
-      const paymentUrl = infoResult.data?.url || result.data?.url || `${basePaymentUrl}/s/${MESHULAM_PAGE_CODE}/${processId}`;
+      const paymentUrl = infoResult.data?.url || result.data?.url || `${basePaymentUrl}/s/${pageCode}/${processId}`;
 
       return NextResponse.json({
         success: true,

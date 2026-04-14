@@ -3,6 +3,7 @@ import pool from "@/lib/db";
 
 const MESHULAM_API_URL = process.env.MESHULAM_API_URL || "https://secure.meshulam.co.il/api/light/server/1.0";
 const MESHULAM_PAGE_CODE = process.env.MESHULAM_PAGE_CODE || "";
+const MESHULAM_RECURRING_PAGE_CODE = process.env.MESHULAM_RECURRING_PAGE_CODE || "";
 const MESHULAM_USER_ID = process.env.MESHULAM_USER_ID || "";
 
 export const dynamic = "force-dynamic";
@@ -66,11 +67,90 @@ export async function POST(req: NextRequest) {
       payerPhone,
       payerEmail,
       cField1,
+      directDebitId,
+      recurringDebitId,
     } = data;
 
-    // cField1 format: "planId:supabaseUid:durationDays"
+    // cField1 format: "planId:supabaseUid:durationDays:couponId:recurring"
     const customId = cField1;
     const paymentStatus = rawData.status || status;
+    const isRecurringPayment = !!directDebitId;
+
+    // Monthly renewal webhook — has directDebitId but no cField1 (or cField1 from original)
+    // Recurring renewals are automatic charges by Grow — extend existing subscription
+    if (isRecurringPayment && (paymentStatus === "1" || String(paymentStatus) === "1") && pool) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Idempotency: check if this specific transaction was already processed
+        if (transactionId) {
+          const existing = await client.query(
+            `SELECT id FROM subscriptions WHERE payment_data->>'transaction_id' = $1`,
+            [transactionId]
+          );
+          if (existing.rows.length > 0) {
+            await client.query("ROLLBACK");
+            console.log(`[Grow Webhook] Duplicate recurring transaction ${transactionId}, skipping`);
+            try { await approveTransaction(data, true); } catch {}
+            return NextResponse.json({ status: 1 });
+          }
+        }
+
+        // Find existing active recurring subscription by directDebitId
+        const existingSub = await client.query(
+          `SELECT s.id, s.user_id, s.plan_type, s.expires_at
+           FROM subscriptions s
+           WHERE s.payment_data->>'direct_debit_id' = $1
+             AND s.is_recurring = true AND s.is_active = true
+           ORDER BY s.created_at DESC LIMIT 1`,
+          [directDebitId]
+        );
+
+        if (existingSub.rows.length > 0) {
+          // This is a monthly renewal — extend existing subscription
+          const sub = existingSub.rows[0];
+          const newExpiry = new Date(Math.max(new Date(sub.expires_at).getTime(), Date.now()));
+          newExpiry.setDate(newExpiry.getDate() + 30);
+
+          await client.query(
+            `UPDATE subscriptions
+             SET expires_at = $2, payment_data = payment_data || $3::jsonb
+             WHERE id = $1`,
+            [
+              sub.id,
+              newExpiry.toISOString(),
+              JSON.stringify({
+                last_renewal_transaction_id: transactionId,
+                last_renewal_asmachta: asmachta,
+                last_renewal_date: paymentDate || new Date().toISOString(),
+                recurring_debit_id: recurringDebitId,
+              }),
+            ]
+          );
+
+          await client.query(
+            `UPDATE users SET is_premium = true, updated_at = NOW() WHERE id = $1`,
+            [sub.user_id]
+          );
+
+          await client.query("COMMIT");
+          console.log(`[Grow Webhook] Recurring renewal for sub ${sub.id}, user ${sub.user_id}, extended to ${newExpiry.toISOString()}`);
+
+          try { await approveTransaction(data, true); } catch {}
+          return NextResponse.json({ status: 1 });
+        }
+
+        // If no existing sub found, this is the initial recurring setup — fall through to normal flow
+        await client.query("ROLLBACK");
+        console.log(`[Grow Webhook] No existing recurring sub for directDebitId=${directDebitId}, treating as initial setup`);
+      } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("[Grow Webhook] Recurring renewal error:", err);
+      } finally {
+        client.release();
+      }
+    }
 
     if (!customId) {
       console.error("[Grow Webhook] No cField1 in payload");
@@ -81,6 +161,8 @@ export async function POST(req: NextRequest) {
     const planId = parts[0] || "";
     const supabaseUid = parts[1] || "";
     const durationDays = parseInt(parts[2]) || 30;
+    const couponId = parts[3] ? parseInt(parts[3]) : null;
+    const isRecurringFlag = parts[4] === "1";
 
     const isSuccess = paymentStatus === "1" || String(paymentStatus) === "1";
 
@@ -89,11 +171,41 @@ export async function POST(req: NextRequest) {
       try {
         await client.query("BEGIN");
 
-        // Get internal user ID
-        const userResult = await client.query(
+        // Idempotency check — skip if this transaction already processed
+        if (transactionId) {
+          const existing = await client.query(
+            `SELECT id FROM subscriptions WHERE payment_data->>'transaction_id' = $1`,
+            [transactionId]
+          );
+          if (existing.rows.length > 0) {
+            await client.query("ROLLBACK");
+            console.log(`[Grow Webhook] Duplicate transaction ${transactionId}, skipping`);
+            // Still approve
+            try { await approveTransaction(data); } catch {}
+            return NextResponse.json({ status: 1 });
+          }
+        }
+
+        // Get internal user ID (with fallback creation for web signups)
+        let userResult = await client.query(
           `SELECT id FROM users WHERE supabase_uid = $1`,
           [supabaseUid]
         );
+
+        if (userResult.rows.length === 0) {
+          // Fallback: create users row if it wasn't created in the create route
+          console.log(`[Grow Webhook] User not found for ${supabaseUid}, creating...`);
+          await client.query(
+            `INSERT INTO users (supabase_uid, first_name, username, is_premium, is_admin, is_blocked, created_at, updated_at)
+             VALUES ($1, $2, $3, false, false, false, NOW(), NOW())
+             ON CONFLICT (supabase_uid) DO NOTHING`,
+            [supabaseUid, fullName || "", payerEmail || ""]
+          );
+          userResult = await client.query(
+            `SELECT id FROM users WHERE supabase_uid = $1`,
+            [supabaseUid]
+          );
+        }
 
         if (userResult.rows.length > 0) {
           const userId = userResult.rows[0].id;
@@ -109,12 +221,13 @@ export async function POST(req: NextRequest) {
           // Create new subscription
           await client.query(
             `INSERT INTO subscriptions (user_id, plan_type, price_paid, starts_at, expires_at, is_active, payment_method, is_recurring, payment_data)
-             VALUES ($1, $2, $3, NOW(), $4, true, 'grow', false, $5)`,
+             VALUES ($1, $2, $3, NOW(), $4, true, 'grow', $5, $6)`,
             [
               userId,
               planId,
               parseFloat(sum) || 0,
               expiresAt.toISOString(),
+              isRecurringFlag || isRecurringPayment,
               JSON.stringify({
                 transaction_id: transactionId,
                 transaction_token: transactionToken,
@@ -128,6 +241,8 @@ export async function POST(req: NextRequest) {
                 customer_name: fullName,
                 customer_phone: payerPhone,
                 customer_email: payerEmail,
+                ...(directDebitId ? { direct_debit_id: directDebitId } : {}),
+                ...(recurringDebitId ? { recurring_debit_id: recurringDebitId } : {}),
               }),
             ]
           );
@@ -138,11 +253,20 @@ export async function POST(req: NextRequest) {
             [userId]
           );
 
+          // Increment coupon uses now that payment is confirmed
+          if (couponId) {
+            await client.query(
+              `UPDATE coupons SET current_uses = current_uses + 1 WHERE id = $1`,
+              [couponId]
+            );
+            console.log(`[Grow Webhook] Incremented coupon ${couponId} uses`);
+          }
+
           await client.query("COMMIT");
           console.log(`[Grow Webhook] Payment successful for user ${supabaseUid}, plan ${planId}, tx ${transactionId}`);
         } else {
           await client.query("ROLLBACK");
-          console.error(`[Grow Webhook] User not found: ${supabaseUid}`);
+          console.error(`[Grow Webhook] User could not be created: ${supabaseUid}`);
         }
       } catch (dbErr) {
         await client.query("ROLLBACK");
@@ -153,7 +277,7 @@ export async function POST(req: NextRequest) {
 
       // Approve transaction (required by Grow)
       try {
-        await approveTransaction(data);
+        await approveTransaction(data, isRecurringFlag || isRecurringPayment);
         console.log(`[Grow Webhook] Transaction ${transactionId} approved`);
       } catch (approveErr) {
         console.error("[Grow Webhook] Approve error:", approveErr);
@@ -165,18 +289,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 1 });
   } catch (error) {
     console.error("[Grow Webhook] Error:", error);
-    return NextResponse.json({ status: 1 });
+    return NextResponse.json({ status: 0 }, { status: 500 });
   }
 }
 
-async function approveTransaction(webhookData: Record<string, string>) {
+async function approveTransaction(webhookData: Record<string, string>, isRecurring: boolean = false) {
+  const pageCode = isRecurring && MESHULAM_RECURRING_PAGE_CODE ? MESHULAM_RECURRING_PAGE_CODE : MESHULAM_PAGE_CODE;
   const formData = new FormData();
-  formData.append("pageCode", MESHULAM_PAGE_CODE);
+  formData.append("pageCode", pageCode);
   formData.append("userId", MESHULAM_USER_ID);
   formData.append("transactionId", webhookData.transactionId || "");
   formData.append("transactionToken", webhookData.transactionToken || "");
   formData.append("transactionTypeId", webhookData.TransactionTypeId || webhookData.transactionTypeId || "1");
-  formData.append("paymentType", webhookData.paymentType || "1");
+  // paymentType: 1 = Direct Debit (recurring), default from webhook otherwise
+  formData.append("paymentType", isRecurring ? "1" : (webhookData.paymentType || "1"));
   formData.append("sum", webhookData.sum || "0");
   formData.append("firstPaymentSum", webhookData.firstPaymentSum || webhookData.sum || "0");
   formData.append("periodicalPaymentSum", webhookData.periodicalPaymentSum || "0");

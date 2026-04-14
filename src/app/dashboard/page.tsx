@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import pool from "@/lib/db";
 import RecommendationCard from "@/components/dashboard/RecommendationCard";
 import StatsBar from "@/components/dashboard/StatsBar";
+import CancelSubscriptionButton from "@/components/dashboard/CancelSubscriptionButton";
 import Link from "next/link";
 
 export const revalidate = 300; // Revalidate every 5 minutes
@@ -42,7 +43,7 @@ async function getRecentResults() {
 async function getUserSubscription(supabaseUid: string) {
   if (!pool) return null;
   const result = await pool.query(
-    `SELECT s.plan_type, s.expires_at, s.is_active
+    `SELECT s.plan_type, s.expires_at, s.is_active, s.is_recurring
      FROM subscriptions s
      JOIN users u ON u.id = s.user_id
      WHERE u.supabase_uid = $1 AND s.is_active = true AND s.expires_at > NOW()
@@ -95,9 +96,13 @@ export default async function DashboardPage() {
             </p>
           </div>
           {isPremium ? (
-            <span className="inline-flex items-center gap-1.5 bg-[#f5a623]/10 border border-[#f5a623]/30 text-[#f5a623] text-sm font-medium px-3 py-1 rounded-full">
-              👑 {subscription.plan_type === "monthly" ? "חבילה חודשית" : "חבילת היכרות"}
-            </span>
+            <div className="text-left">
+              <span className="inline-flex items-center gap-1.5 bg-[#f5a623]/10 border border-[#f5a623]/30 text-[#f5a623] text-sm font-medium px-3 py-1 rounded-full">
+                👑 {subscription.plan_type === "monthly" ? "חבילה חודשית" : "חבילת היכרות"}
+                {subscription.is_recurring && <span className="text-[10px] opacity-70 mr-1">(הו&quot;ק)</span>}
+              </span>
+              {subscription.is_recurring && <CancelSubscriptionButton />}
+            </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 bg-gray-800 border border-gray-700 text-gray-400 text-sm px-3 py-1 rounded-full">
               🆓 חינם

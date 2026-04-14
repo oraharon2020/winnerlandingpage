@@ -94,12 +94,37 @@ export default function CheckoutPage() {
 
   const plan = plans.find((p) => p.id === selectedPlan) || plans[0];
   const finalPrice = appliedCoupon ? appliedCoupon.finalPrice : plan.price;
+  const isRecurringPlan = plan.durationDays >= 28 && plan.durationDays <= 31;
 
   // Check for success/cancelled redirects from Grow
   useEffect(() => {
     const payment = searchParams.get("payment");
     if (payment === "success") {
-      setStatus("success");
+      // Poll to verify subscription was actually created by the webhook
+      setStatus("processing");
+      let attempts = 0;
+      const maxAttempts = 10;
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await fetch("/api/user/subscription");
+          const data = await res.json();
+          if (data.isActive) {
+            clearInterval(pollInterval);
+            setStatus("success");
+          } else if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            // Still show success — webhook might be slightly delayed
+            setStatus("success");
+          }
+        } catch {
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            setStatus("success");
+          }
+        }
+      }, 2000);
+      return () => clearInterval(pollInterval);
     }
   }, [searchParams]);
 
@@ -437,7 +462,7 @@ export default function CheckoutPage() {
           </div>
           <div className="flex justify-between text-sm text-gray-300 mb-2">
             <span>{plan.icon} {plan.nameHe}</span>
-            <span>{plan.durationDays} ימים</span>
+            <span>{isRecurringPlan ? "הוראת קבע חודשית" : `${plan.durationDays} ימים`}</span>
           </div>
           {appliedCoupon && (
             <div className="flex justify-between text-sm text-emerald-400 mb-2">
@@ -452,8 +477,14 @@ export default function CheckoutPage() {
                 <span className="text-gray-500 line-through text-sm ml-2">₪{plan.price}</span>
               )}
               <span className="text-[#f5a623] font-extrabold text-lg">₪{finalPrice}</span>
+              {isRecurringPlan && <span className="text-gray-400 text-xs mr-1">/ חודש</span>}
             </div>
           </div>
+          {isRecurringPlan && (
+            <p className="text-gray-500 text-xs mt-2 text-center">
+              💳 חיוב חודשי אוטומטי (הוראת קבע) • ניתן לבטל בכל רגע
+            </p>
+          )}
         </div>
 
         {/* ── Payment Details ── */}
@@ -510,7 +541,7 @@ export default function CheckoutPage() {
             disabled={status === "processing"}
             className="w-full bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold py-4 rounded-xl text-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {status === "processing" ? "⏳ מעבד..." : `💳 שלם ₪${finalPrice}`}
+            {status === "processing" ? "⏳ מעבד..." : `💳 ${isRecurringPlan ? `הרשמה — ₪${finalPrice}/חודש` : `שלם ₪${finalPrice}`}`}
           </button>
         ) : (
           <button
