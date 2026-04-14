@@ -5,6 +5,8 @@ const MESHULAM_API_URL = process.env.MESHULAM_API_URL || "https://secure.meshula
 const MESHULAM_PAGE_CODE = process.env.MESHULAM_PAGE_CODE || "";
 const MESHULAM_RECURRING_PAGE_CODE = process.env.MESHULAM_RECURRING_PAGE_CODE || "";
 const MESHULAM_USER_ID = process.env.MESHULAM_USER_ID || "";
+const MESHULAM_RECURRING_USER_ID = process.env.MESHULAM_RECURRING_USER_ID || MESHULAM_USER_ID;
+const MESHULAM_RECURRING_API_URL = process.env.MESHULAM_RECURRING_API_URL || MESHULAM_API_URL;
 
 export const dynamic = "force-dynamic";
 
@@ -295,9 +297,11 @@ export async function POST(req: NextRequest) {
 
 async function approveTransaction(webhookData: Record<string, string>, isRecurring: boolean = false) {
   const pageCode = isRecurring && MESHULAM_RECURRING_PAGE_CODE ? MESHULAM_RECURRING_PAGE_CODE : MESHULAM_PAGE_CODE;
+  const userId = isRecurring ? MESHULAM_RECURRING_USER_ID : MESHULAM_USER_ID;
+  const apiUrl = isRecurring ? MESHULAM_RECURRING_API_URL : MESHULAM_API_URL;
   const formData = new FormData();
   formData.append("pageCode", pageCode);
-  formData.append("userId", MESHULAM_USER_ID);
+  formData.append("userId", userId);
   formData.append("transactionId", webhookData.transactionId || "");
   formData.append("transactionToken", webhookData.transactionToken || "");
   formData.append("transactionTypeId", webhookData.TransactionTypeId || webhookData.transactionTypeId || "1");
@@ -323,7 +327,7 @@ async function approveTransaction(webhookData: Record<string, string>, isRecurri
   formData.append("processId", webhookData.processId || "");
   formData.append("processToken", webhookData.processToken || "");
 
-  const response = await fetch(`${MESHULAM_API_URL}/approveTransaction`, {
+  const response = await fetch(`${apiUrl}/approveTransaction`, {
     method: "POST",
     body: formData,
   });

@@ -6,6 +6,8 @@ const MESHULAM_API_URL = process.env.MESHULAM_API_URL || "https://secure.meshula
 const MESHULAM_PAGE_CODE = process.env.MESHULAM_PAGE_CODE || "";
 const MESHULAM_RECURRING_PAGE_CODE = process.env.MESHULAM_RECURRING_PAGE_CODE || "";
 const MESHULAM_USER_ID = process.env.MESHULAM_USER_ID || "";
+const MESHULAM_RECURRING_USER_ID = process.env.MESHULAM_RECURRING_USER_ID || MESHULAM_USER_ID;
+const MESHULAM_RECURRING_API_URL = process.env.MESHULAM_RECURRING_API_URL || MESHULAM_API_URL;
 
 export const dynamic = "force-dynamic";
 
@@ -158,9 +160,12 @@ export async function POST(req: NextRequest) {
     // cField1 format: "planId:supabaseUid:durationDays:couponId:recurring"
     const customId = `${planId}:${user.id}:${durationDays}:${couponId || ''}:${isRecurring ? '1' : '0'}`;
 
+    const meshulamUserId = isRecurring ? MESHULAM_RECURRING_USER_ID : MESHULAM_USER_ID;
+    const meshulamApiUrl = isRecurring ? MESHULAM_RECURRING_API_URL : MESHULAM_API_URL;
+
     const formData = new FormData();
     formData.append("pageCode", pageCode);
-    formData.append("userId", MESHULAM_USER_ID);
+    formData.append("userId", meshulamUserId);
     formData.append("sum", planPrice.toString());
     formData.append("description", `הטיפ המנצח — ${planName}${isRecurring ? ' (הוראת קבע חודשית)' : ''}`);
     formData.append("successUrl", `${appUrl}/checkout?payment=success`);
@@ -178,16 +183,16 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("[Grow Create] Calling createPaymentProcess:", {
-      apiUrl: MESHULAM_API_URL,
+      apiUrl: meshulamApiUrl,
       pageCodeSet: !!pageCode,
-      userIdSet: !!MESHULAM_USER_ID,
+      userIdSet: !!meshulamUserId,
       sum: planPrice,
       description: `הטיפ המנצח — ${planName}`,
       notifyUrl: `${appUrl}/api/grow/webhook`,
       isRecurring,
     });
 
-    const response = await fetch(`${MESHULAM_API_URL}/createPaymentProcess`, {
+    const response = await fetch(`${meshulamApiUrl}/createPaymentProcess`, {
       method: "POST",
       body: formData,
     });
@@ -200,17 +205,17 @@ export async function POST(req: NextRequest) {
 
       const infoFormData = new FormData();
       infoFormData.append("pageCode", pageCode);
-      infoFormData.append("userId", MESHULAM_USER_ID);
+      infoFormData.append("userId", meshulamUserId);
       infoFormData.append("processId", processId.toString());
       infoFormData.append("processToken", processToken);
 
-      const infoResponse = await fetch(`${MESHULAM_API_URL}/getPaymentProcessInfo`, {
+      const infoResponse = await fetch(`${meshulamApiUrl}/getPaymentProcessInfo`, {
         method: "POST",
         body: infoFormData,
       });
       const infoResult = await infoResponse.json();
 
-      const isSandbox = MESHULAM_API_URL.includes("sandbox");
+      const isSandbox = meshulamApiUrl.includes("sandbox");
       const basePaymentUrl = isSandbox ? "https://sandbox.meshulam.co.il" : "https://secure.meshulam.co.il";
       const paymentUrl = infoResult.data?.url || result.data?.url || `${basePaymentUrl}/s/${pageCode}/${processId}`;
 

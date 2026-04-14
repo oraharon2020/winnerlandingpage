@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import pool from "@/lib/db";
 
-const MESHULAM_API_URL = process.env.MESHULAM_API_URL || "https://secure.meshulam.co.il/api/light/server/1.0";
-const MESHULAM_USER_ID = process.env.MESHULAM_USER_ID || "";
+const MESHULAM_API_URL = process.env.MESHULAM_RECURRING_API_URL || process.env.MESHULAM_API_URL || "https://secure.meshulam.co.il/api/light/server/1.0";
+const MESHULAM_USER_ID = process.env.MESHULAM_RECURRING_USER_ID || process.env.MESHULAM_USER_ID || "";
 
 export const dynamic = "force-dynamic";
 
