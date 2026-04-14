@@ -179,8 +179,9 @@ export async function POST(req: NextRequest) {
       formData.append("pageField[email]", customerEmail);
     }
     formData.append("cField1", customId);
-    // For recurring: paymentNum is required for recurring (2-12), sum = monthly amount
+    // For recurring: chargeType=1 (Regular Charge, not suspended), paymentNum per Grow docs
     if (isRecurring) {
+      formData.append("chargeType", "1");
       formData.append("paymentNum", "12");
     }
 
