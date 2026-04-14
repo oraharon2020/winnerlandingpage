@@ -65,6 +65,7 @@ export default function CheckoutPage() {
         setIsLoggedIn(true);
         setAuthReady(true);
         setEmail(user.email || "");
+        setFullName(user.user_metadata?.full_name || "");
       } else {
         setIsLoggedIn(false);
         setAuthReady(false);
@@ -178,7 +179,13 @@ export default function CheckoutPage() {
       return;
     }
 
-    const customerName = fullName.trim() || email.split("@")[0] || "לקוח";
+    if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
+      setErrorMsg("נא למלא שם מלא (שם פרטי + שם משפחה)");
+      setStatus("idle");
+      return;
+    }
+
+    const customerName = fullName.trim();
 
     try {
       const res = await fetch("/api/grow/create", {
@@ -409,12 +416,10 @@ export default function CheckoutPage() {
         {/* ── Order Summary ── */}
         <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-6">
           <div className="flex items-center gap-2 mb-3">
-            <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
-              isLoggedIn ? "bg-[#f5a623] text-[#0a0e17]" : "bg-gray-600 text-gray-300"
-            }`}>
-              {isLoggedIn ? "1" : "2"}
+            <div className="w-6 h-6 rounded-full bg-[#f5a623] text-[#0a0e17] text-xs font-bold flex items-center justify-center">
+              {isLoggedIn ? "3" : "4"}
             </div>
-            <h2 className="text-white font-bold">סיכום ותשלום</h2>
+            <h2 className="text-white font-bold">סיכום הזמנה</h2>
           </div>
           <div className="flex justify-between text-sm text-gray-300 mb-2">
             <span>{plan.icon} {plan.nameHe}</span>
@@ -437,17 +442,45 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* ── Phone for payment ── */}
-        <div className="mb-5">
-          <label className="block text-gray-400 text-xs mb-1.5">מספר טלפון (לסליקה)</label>
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="05x-xxx-xxxx"
-            dir="ltr"
-            className="w-full bg-gray-900/50 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:border-[#f5a623] focus:outline-none transition"
-          />
+        {/* ── Payment Details ── */}
+        <div className="bg-gray-900/50 border border-gray-700 rounded-xl p-5 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
+              isLoggedIn ? "bg-[#f5a623] text-[#0a0e17]" : "bg-gray-600 text-gray-300"
+            }`}>
+              {isLoggedIn ? "2" : "3"}
+            </div>
+            <h2 className="text-white font-bold">פרטים לסליקה</h2>
+          </div>
+          <div className="space-y-3">
+            {isLoggedIn && (
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="שם מלא (פרטי + משפחה)"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+              />
+            )}
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="טלפון — 05x-xxx-xxxx"
+              dir="ltr"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+            />
+            {isLoggedIn && (
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="אימייל"
+                dir="ltr"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#10b981] focus:border-transparent text-sm"
+              />
+            )}
+          </div>
         </div>
 
         {/* ── Payment ── */}
