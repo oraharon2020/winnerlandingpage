@@ -29,8 +29,9 @@ export default function PrivacyPage() {
                 <strong className="text-white">מידע הרשמה:</strong> כתובת אימייל, שם מלא, סיסמה מוצפנת.
               </li>
               <li>
-                <strong className="text-white">מידע תשלום:</strong> עסקאות PayPal (מזהה עסקה, סכום, תאריך).
-                איננו שומרים פרטי כרטיס אשראי — כל התשלומים מבוצעים דרך PayPal.
+                <strong className="text-white">מידע תשלום:</strong> פרטי עסקאות (מזהה עסקה, סכום, תאריך).
+                <strong className="text-white">פרטי כרטיס אשראי אינם נשמרים אצלנו כלל.</strong> כל התשלומים מבוצעים דרך חברת הסליקה Grow (משולם בע&quot;מ),
+                המוסמכת לתקן PCI DSS לאבטחת נתוני תשלום.
               </li>
               <li>
                 <strong className="text-white">מידע שימוש:</strong> דפים שנצפו, זמני גישה, סוג דפדפן ומכשיר.
@@ -61,7 +62,7 @@ export default function PrivacyPage() {
             </p>
             <ul className="list-disc pr-6 space-y-2">
               <li>
-                <strong className="text-white">ספקי שירות:</strong> PayPal (עיבוד תשלומים), Supabase (אחסון נתונים ואימות), Vercel (אירוח).
+                <strong className="text-white">ספקי שירות:</strong> Grow/משולם (עיבוד תשלומים וסליקה), Supabase (אחסון נתונים ואימות), Vercel (אירוח).
               </li>
               <li>
                 <strong className="text-white">דרישה חוקית:</strong> כאשר נדרש על פי חוק או צו בית משפט.
@@ -78,7 +79,7 @@ export default function PrivacyPage() {
               <li>הצפנת SSL/TLS לכל התקשורת.</li>
               <li>סיסמאות מאוחסנות בהצפנה חד-כיוונית (hashing).</li>
               <li>גישה מוגבלת למידע רק לעובדים מורשים.</li>
-              <li>תשלומים מעובדים דרך PayPal — איננו שומרים פרטי כרטיס.</li>
+              <li>תשלומים מעובדים דרך Grow (משולם) — פרטי כרטיס אשראי נשמרים אך ורק במערכות Grow המאובטחות בתקן PCI DSS, ולא על השרתים שלנו.</li>
             </ul>
           </section>
 

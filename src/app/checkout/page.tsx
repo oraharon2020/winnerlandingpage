@@ -58,6 +58,9 @@ export default function CheckoutPage() {
   // Phone for payment
   const [phone, setPhone] = useState("");
 
+  // Terms agreement
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
   // Check if user is already logged in
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -208,6 +211,12 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!agreedToTerms) {
+      setErrorMsg("נא לאשר את תנאי השימוש ומדיניות הפרטיות");
+      setStatus("error");
+      return;
+    }
+
     if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
       console.log("[Checkout] Full name invalid:", fullName);
       setErrorMsg("נא למלא שם מלא (שם פרטי + שם משפחה)");
@@ -263,7 +272,7 @@ export default function CheckoutPage() {
       setStatus("error");
       setErrorMsg("שגיאת רשת, נסה שוב");
     }
-  }, [authReady, handleSignup, phone, fullName, email, selectedPlan, appliedCoupon]);
+  }, [authReady, handleSignup, phone, fullName, email, selectedPlan, appliedCoupon, agreedToTerms]);
 
   async function applyCoupon() {
     if (!couponInput.trim()) return;
@@ -526,6 +535,25 @@ export default function CheckoutPage() {
               />
             )}
           </div>
+        </div>
+
+        {/* ── Terms Agreement ── */}
+        <div className="mb-5">
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-[#f5a623] focus:ring-[#f5a623] focus:ring-offset-0 cursor-pointer flex-shrink-0"
+            />
+            <span className="text-gray-400 text-xs leading-relaxed">
+              אני מאשר/ת שאני בן/בת 18 ומעלה, קראתי ומסכים/ה ל{" "}
+              <a href="/terms" target="_blank" className="text-[#f5a623] hover:underline">תנאי השימוש והתקנון</a>
+              {" "}ול{" "}
+              <a href="/privacy" target="_blank" className="text-[#f5a623] hover:underline">מדיניות הפרטיות</a>.
+              אני מבין/ה שהשירות מספק הערכות בלבד ואינו מהווה ייעוץ פיננסי או המלצה להמר.
+            </span>
+          </label>
         </div>
 
         {/* ── Payment ── */}
