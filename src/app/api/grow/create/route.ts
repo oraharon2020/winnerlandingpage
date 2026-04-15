@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
     }
     formData.append("description", `הטיפ המנצח ${planName}`);
     if (isRecurring) {
-      formData.append("paymentNum", "12");
+      formData.append("paymentNum", "0");
     }
     formData.append("pageField[fullName]", customerName);
     formData.append("pageField[phone]", phone);
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       phone,
       cField1: customId,
       isRecurring,
-      paymentNum: isRecurring ? "12" : undefined,
+      paymentNum: isRecurring ? "0" : undefined,
     });
 
     const response = await fetch(`${meshulamApiUrl}/createPaymentProcess`, {
