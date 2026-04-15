@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { verifyAdmin } from "@/lib/admin-auth";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -253,15 +254,28 @@ export async function POST(request: NextRequest) {
       }
 
       if (action === "delete_user") {
+        // Get user info before deleting
+        const userRow = await client.query(`SELECT telegram_id, supabase_uid FROM users WHERE id = $1`, [userId]);
+        const supabaseUid = userRow.rows[0]?.supabase_uid;
+        const telegramId = userRow.rows[0]?.telegram_id;
+
         // Delete subscriptions first (FK dependency)
         await client.query(`DELETE FROM subscriptions WHERE user_id = $1`, [userId]);
         // Delete user source tracking if exists
-        const userRow = await client.query(`SELECT telegram_id FROM users WHERE id = $1`, [userId]);
-        if (userRow.rows[0]?.telegram_id) {
-          await client.query(`DELETE FROM user_sources WHERE telegram_id = $1`, [userRow.rows[0].telegram_id]);
+        if (telegramId) {
+          await client.query(`DELETE FROM user_sources WHERE telegram_id = $1`, [telegramId]);
         }
-        // Delete the user
+        // Delete the user from DB
         await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+
+        // Delete from Supabase Auth if web user
+        if (supabaseUid) {
+          const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(supabaseUid);
+          if (authError) {
+            console.error("[Delete User] Supabase Auth deletion failed:", authError.message);
+          }
+        }
+
         return NextResponse.json({ ok: true, message: "User deleted" });
       }
     } finally {
