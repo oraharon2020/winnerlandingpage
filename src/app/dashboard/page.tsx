@@ -101,7 +101,16 @@ export default async function DashboardPage() {
                 👑 {subscription.plan_type === "monthly" ? "חבילה חודשית" : "חבילת היכרות"}
                 {subscription.is_recurring && <span className="text-[10px] opacity-70 mr-1">(הו&quot;ק)</span>}
               </span>
-              {subscription.is_recurring && <CancelSubscriptionButton />}
+              {subscription.is_recurring ? (
+                <CancelSubscriptionButton />
+              ) : (
+                <Link
+                  href="/checkout"
+                  className="block text-emerald-400 hover:text-emerald-300 text-xs mt-1 transition underline"
+                >
+                  🔄 חידוש מנוי
+                </Link>
+              )}
             </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 bg-gray-800 border border-gray-700 text-gray-400 text-sm px-3 py-1 rounded-full">
