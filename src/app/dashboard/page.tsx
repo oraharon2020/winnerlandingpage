@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import pool from "@/lib/db";
 import RecommendationCard from "@/components/dashboard/RecommendationCard";
-import StatsBar from "@/components/dashboard/StatsBar";
 import CancelSubscriptionButton from "@/components/dashboard/CancelSubscriptionButton";
 import Link from "next/link";
 
@@ -14,30 +13,11 @@ async function getTodayRecommendations() {
     `SELECT id, fixture_id, home_team, away_team, league, match_time, 
             bet_type, odds, probability, risk_profile, reasons, is_correct
      FROM daily_recommendations 
-     WHERE recommendation_date = $1 AND is_active = true
+     WHERE recommendation_date::date = $1 AND is_active = true
      ORDER BY match_time ASC`,
     [today]
   );
   return result.rows;
-}
-
-async function getRecentResults() {
-  if (!pool) return { wins: 0, losses: 0, total: 0, rate: 0 };
-  const result = await pool.query(
-    `SELECT 
-       COUNT(*) FILTER (WHERE is_correct = true) as wins,
-       COUNT(*) FILTER (WHERE is_correct = false) as losses,
-       COUNT(*) as total
-     FROM daily_recommendations 
-     WHERE is_correct IS NOT NULL`
-  );
-  const row = result.rows[0];
-  return {
-    wins: Number(row.wins),
-    losses: Number(row.losses),
-    total: Number(row.total),
-    rate: row.total > 0 ? Math.round((row.wins / row.total) * 1000) / 10 : 0,
-  };
 }
 
 async function getUserSubscription(supabaseUid: string) {
@@ -60,10 +40,7 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [recommendations, stats] = await Promise.all([
-    getTodayRecommendations(),
-    getRecentResults(),
-  ]);
+  const recommendations = await getTodayRecommendations();
 
   // Check subscription
   const subscription = user ? await getUserSubscription(user.id) : null;
@@ -120,17 +97,18 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <StatsBar stats={stats} todayCount={recommendations.length} />
-
       {/* Recommendations */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          🎯 המלצות היום
-          <span className="text-gray-400 text-sm font-normal mr-2">
-            ({recommendations.length} המלצות)
-          </span>
-        </h2>
+      <div className="mt-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">
+            🎯 המלצות היום
+          </h2>
+          {recommendations.length > 0 && (
+            <span className="bg-[#10b981]/10 text-[#10b981] text-xs font-medium px-3 py-1 rounded-full border border-[#10b981]/20">
+              {recommendations.length} המלצות
+            </span>
+          )}
+        </div>
 
         {recommendations.length === 0 ? (
           <div className="glass-card rounded-2xl p-8 border border-white/10 text-center">
