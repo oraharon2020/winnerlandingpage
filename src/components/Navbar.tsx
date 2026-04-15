@@ -1,14 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setLoggedIn(!!user);
+    });
   }, []);
 
   return (
@@ -41,18 +50,29 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-3">
-            <a
-              href="/auth/login"
-              className="text-gray-300 hover:text-white text-sm transition-all"
-            >
-              התחברות
-            </a>
-            <a
-              href="/checkout"
-              className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
-            >
-              התחל לנצח →
-            </a>
+            {loggedIn ? (
+              <a
+                href="/dashboard"
+                className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
+              >
+                האזור האישי →
+              </a>
+            ) : (
+              <>
+                <a
+                  href="/auth/login"
+                  className="text-gray-300 hover:text-white text-sm transition-all"
+                >
+                  התחברות
+                </a>
+                <a
+                  href="/checkout"
+                  className="bg-[#f5a623] hover:bg-[#d4891a] text-[#0a0e17] font-bold px-5 py-2 rounded-lg text-sm transition-all"
+                >
+                  התחל לנצח →
+                </a>
+              </>
+            )}
           </div>
         </div>
       </div>
