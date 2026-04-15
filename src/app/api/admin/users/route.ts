@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
 
   const { action } = body;
 
-  const allowed = ["grant_premium", "revoke_premium", "block", "unblock", "create_web_user"];
+  const allowed = ["grant_premium", "revoke_premium", "block", "unblock", "create_web_user", "delete_user"];
   if (!allowed.includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
@@ -250,6 +250,19 @@ export async function POST(request: NextRequest) {
           [userId]
         );
         return NextResponse.json({ ok: true, message: "User unblocked" });
+      }
+
+      if (action === "delete_user") {
+        // Delete subscriptions first (FK dependency)
+        await client.query(`DELETE FROM subscriptions WHERE user_id = $1`, [userId]);
+        // Delete user source tracking if exists
+        const userRow = await client.query(`SELECT telegram_id FROM users WHERE id = $1`, [userId]);
+        if (userRow.rows[0]?.telegram_id) {
+          await client.query(`DELETE FROM user_sources WHERE telegram_id = $1`, [userRow.rows[0].telegram_id]);
+        }
+        // Delete the user
+        await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+        return NextResponse.json({ ok: true, message: "User deleted" });
       }
     } finally {
       client.release();

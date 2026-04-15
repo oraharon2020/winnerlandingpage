@@ -586,6 +586,15 @@ function UsersTab() {
                                 🚫
                               </button>
                             )}
+                            <button
+                              onClick={() => {
+                                if (confirm(`למחוק לצמיתות את ${u.firstName || u.username || u.telegramId}? פעולה זו תמחק את כל המנויים והנתונים של המשתמש ולא ניתנת לשחזור!`))
+                                  userAction(u.id, "delete_user");
+                              }}
+                              className="bg-red-900/30 hover:bg-red-900/50 text-red-400 px-2 py-0.5 rounded text-xs transition-colors"
+                            >
+                              🗑️ מחק
+                            </button>
                           </>
                         )}
                       </div>
